@@ -11,6 +11,7 @@ class AuthController extends ChangeNotifier {
 
   static const _tokenKey = 'ka_music_token';
   static const _t1Key = 'ka_music_t1';
+  static const _sessionIdKey = 'ka_music_session_id';
   static const _userIdKey = 'ka_music_user_id';
   static const _playlistCachePrefix = 'ka_music_cached_playlists';
   static const _playlistEmptyCountPrefix = 'ka_music_playlist_empty_count';
@@ -97,6 +98,7 @@ class AuthController extends ChangeNotifier {
         userId: prefs.getString(_userIdKey),
         token: prefs.getString(_tokenKey),
         t1: prefs.getString(_t1Key),
+        sessionId: prefs.getString(_sessionIdKey),
       );
 
       if (!restored.isValid) {
@@ -129,6 +131,7 @@ class AuthController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, nextSession.token ?? '');
       await prefs.setString(_t1Key, nextSession.t1 ?? '');
+      await prefs.setString(_sessionIdKey, nextSession.sessionId ?? '');
       await prefs.setString(_userIdKey, nextSession.userId ?? '');
 
       await refreshProfile(silent: true);
@@ -158,6 +161,7 @@ class AuthController extends ChangeNotifier {
         _api.setSession(null);
         await prefs.remove(_tokenKey);
         await prefs.remove(_t1Key);
+        await prefs.remove(_sessionIdKey);
         await prefs.remove(_userIdKey);
         await prefs.remove(cacheKey);
         await prefs.remove(emptyCountKey);
