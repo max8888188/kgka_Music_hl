@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/services.dart';
 
 import 'config/app_config.dart';
 import 'controllers/auth_controller.dart';
@@ -76,6 +77,9 @@ class _KaMusicAppState extends State<KaMusicApp> {
       themeMode: ThemeMode.system,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
+      builder: (context, child) {
+        return _SystemUiOverlay(child: child ?? const SizedBox.shrink());
+      },
       home: AnimatedBuilder(
         animation: _auth,
         builder: (context, _) {
@@ -90,6 +94,34 @@ class _KaMusicAppState extends State<KaMusicApp> {
           return AppShell(api: _api, auth: _auth, player: _player);
         },
       ),
+    );
+  }
+}
+
+class _SystemUiOverlay extends StatelessWidget {
+  const _SystemUiOverlay({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: colorScheme.surface,
+      systemNavigationBarIconBrightness: isDark
+          ? Brightness.light
+          : Brightness.dark,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarContrastEnforced: false,
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: child,
     );
   }
 }

@@ -181,7 +181,7 @@ class MusicApi {
   Future<PlaylistDetail> playlistDetail(String id) async {
     final results = await Future.wait([
       playlistInfo(id),
-      playlistSongs(id, pageSize: 200, fetchAll: true),
+      playlistSongs(id, pageSize: 50),
     ]);
     return PlaylistDetail(
       info: results[0] as PlaylistSummary,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -7,6 +8,8 @@ import '../models/music_models.dart';
 import '../services/music_api.dart';
 import '../services/music_audio_handler.dart';
 
+enum PlaybackMode { playlistLoop, shuffle, singleLoop }
+
 class PlayerController extends ChangeNotifier {
   PlayerController(this._api, this._audioHandler) {
     _audioHandler.attachTransportControls(onNext: next, onPrevious: previous);
@@ -14,6 +17,7 @@ class PlayerController extends ChangeNotifier {
       if (!_isSeeking) {
         _setPositionBase(value, playing: isPlaying);
       }
+      _maybeCompleteFromPosition(value);
       notifyListeners();
     });
     _durationSub = audioPlayer.durationStream.listen((value) {
@@ -30,6 +34,13 @@ class PlayerController extends ChangeNotifier {
       }
       notifyListeners();
     });
+    _processingStateSub = audioPlayer.processingStateStream.distinct().listen((
+      state,
+    ) {
+      if (state == ProcessingState.completed) {
+        unawaited(_handleCompleted());
+      }
+    });
   }
 
   final MusicApi _api;
@@ -40,14 +51,20 @@ class PlayerController extends ChangeNotifier {
   late final StreamSubscription<Duration> _positionSub;
   late final StreamSubscription<Duration?> _durationSub;
   late final StreamSubscription<PlayerState> _stateSub;
+  late final StreamSubscription<ProcessingState> _processingStateSub;
   final Stopwatch _positionClock = Stopwatch();
+  final _random = math.Random();
+  Timer? _completionFallbackTimer;
   int _seekSerial = 0;
   bool _isSeeking = false;
   bool _isScrubbing = false;
+  bool _isHandlingCompletion = false;
+  String? _completedSongHash;
 
   Song? currentSong;
   List<Song> queue = const [];
   List<LyricLine> lyrics = const [];
+  PlaybackMode playbackMode = PlaybackMode.playlistLoop;
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
   bool isPlaying = false;
@@ -94,7 +111,27 @@ class PlayerController extends ChangeNotifier {
     return index;
   }
 
+  String get playbackModeLabel {
+    return switch (playbackMode) {
+      PlaybackMode.playlistLoop => '歌单循环',
+      PlaybackMode.shuffle => '随机播放',
+      PlaybackMode.singleLoop => '单曲循环',
+    };
+  }
+
+  PlaybackMode cyclePlaybackMode() {
+    playbackMode = switch (playbackMode) {
+      PlaybackMode.playlistLoop => PlaybackMode.shuffle,
+      PlaybackMode.shuffle => PlaybackMode.singleLoop,
+      PlaybackMode.singleLoop => PlaybackMode.playlistLoop,
+    };
+    notifyListeners();
+    return playbackMode;
+  }
+
   Future<void> playSong(Song song, {List<Song>? queue}) async {
+    _completionFallbackTimer?.cancel();
+    _completedSongHash = null;
     isPreparing = true;
     errorMessage = null;
     currentSong = song;
@@ -147,6 +184,9 @@ class PlayerController extends ChangeNotifier {
     if (audioPlayer.playing) {
       await _audioHandler.pause();
     } else {
+      if (audioPlayer.processingState == ProcessingState.completed) {
+        await _audioHandler.seek(Duration.zero);
+      }
       await _audioHandler.play();
     }
   }
@@ -183,10 +223,9 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> next() async {
-    final index = currentIndex;
-    if (index >= 0 && index < queue.length - 1) {
-      await playSong(queue[index + 1], queue: queue);
-    }
+    final nextSong = _nextSong();
+    if (nextSong == null) return;
+    await playSong(nextSong, queue: queue);
   }
 
   Future<void> previous() async {
@@ -198,11 +237,89 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  Future<void> _handleCompleted() async {
+    if (_isHandlingCompletion || currentSong == null) return;
+    if (_completedSongHash == currentSong!.hash) return;
+    _isHandlingCompletion = true;
+    _completionFallbackTimer?.cancel();
+    _completedSongHash = currentSong!.hash;
+
+    try {
+      if (playbackMode == PlaybackMode.singleLoop) {
+        _completedSongHash = null;
+        await _audioHandler.seek(Duration.zero);
+        await _audioHandler.play();
+        return;
+      }
+
+      final nextSong = _nextSong();
+      if (nextSong == null) {
+        await _audioHandler.seek(Duration.zero);
+        return;
+      }
+      await playSong(nextSong, queue: queue);
+    } finally {
+      _isHandlingCompletion = false;
+    }
+  }
+
+  void _maybeCompleteFromPosition(Duration value) {
+    if (_isSeeking || _isScrubbing || !isPlaying || duration <= Duration.zero) {
+      return;
+    }
+    if (audioPlayer.processingState == ProcessingState.completed) {
+      return;
+    }
+
+    final remaining = duration - value;
+    if (remaining.inMilliseconds <= 750 &&
+        (_completionFallbackTimer?.isActive != true)) {
+      final delay =
+          (remaining > Duration.zero ? remaining : Duration.zero) +
+          const Duration(milliseconds: 180);
+      _completionFallbackTimer = Timer(delay, () {
+        if (!isPlaying || _isSeeking || _isScrubbing) return;
+        final currentPosition = audioPlayer.position;
+        if (duration > Duration.zero &&
+            duration - currentPosition <= const Duration(milliseconds: 220)) {
+          unawaited(_handleCompleted());
+        }
+      });
+    }
+  }
+
+  Song? _nextSong() {
+    if (queue.isEmpty) {
+      return currentSong;
+    }
+
+    final index = currentIndex;
+    if (playbackMode == PlaybackMode.shuffle) {
+      if (queue.length == 1) return queue.first;
+
+      var nextIndex = _random.nextInt(queue.length);
+      if (index >= 0) {
+        while (nextIndex == index) {
+          nextIndex = _random.nextInt(queue.length);
+        }
+      }
+      return queue[nextIndex];
+    }
+
+    if (index >= 0 && index < queue.length - 1) {
+      return queue[index + 1];
+    }
+
+    return queue.first;
+  }
+
   @override
   void dispose() {
     _positionSub.cancel();
     _durationSub.cancel();
     _stateSub.cancel();
+    _processingStateSub.cancel();
+    _completionFallbackTimer?.cancel();
     _audioHandler.detachTransportControls();
     unawaited(_audioHandler.close());
     super.dispose();

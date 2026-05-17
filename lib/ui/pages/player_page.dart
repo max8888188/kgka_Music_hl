@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../controllers/auth_controller.dart';
@@ -106,7 +105,10 @@ class _PlayerBody extends StatefulWidget {
 class _PlayerBodyState extends State<_PlayerBody> {
   final _pageController = PageController();
   var _page = 0;
+  var _pageScrolling = false;
   var _lyricFocusRequest = 0;
+
+  bool get _lyricPageActive => _page == 1 && !_pageScrolling;
 
   @override
   void dispose() {
@@ -128,30 +130,29 @@ class _PlayerBodyState extends State<_PlayerBody> {
                   auth: widget.auth,
                   song: widget.song,
                   onClose: widget.onClose,
-                  onQueue: widget.onQueue,
                 ),
                 Expanded(
-                  child: PageView(
-                    controller: _pageController,
-                    onPageChanged: (value) {
-                      setState(() {
-                        _page = value;
-                        if (value == 1) {
-                          _lyricFocusRequest++;
-                        }
-                      });
-                    },
-                    children: [
-                      _PosterPlayerPage(
-                        player: widget.player,
-                        song: widget.song,
-                      ),
-                      _LyricPlayerPage(
-                        player: widget.player,
-                        song: widget.song,
-                        focusRequest: _lyricFocusRequest,
-                      ),
-                    ],
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handlePageScrollNotification,
+                    child: PageView(
+                      controller: _pageController,
+                      onPageChanged: (value) => _setPageState(page: value),
+                      children: [
+                        _PosterPlayerPage(
+                          key: const PageStorageKey('poster-player-page'),
+                          player: widget.player,
+                          song: widget.song,
+                          onQueue: widget.onQueue,
+                        ),
+                        _LyricPlayerPage(
+                          key: const PageStorageKey('lyric-player-page'),
+                          player: widget.player,
+                          song: widget.song,
+                          focusRequest: _lyricFocusRequest,
+                          isPageActive: _lyricPageActive,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 _PageDots(page: _page),
@@ -161,6 +162,42 @@ class _PlayerBodyState extends State<_PlayerBody> {
         ],
       ),
     );
+  }
+
+  bool _handlePageScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.horizontal) {
+      return false;
+    }
+
+    if (notification is ScrollStartNotification) {
+      _setPageState(scrolling: true);
+    } else if (notification is ScrollEndNotification) {
+      final page = (_pageController.page ?? _page.toDouble()).round().clamp(
+        0,
+        1,
+      );
+      _setPageState(page: page, scrolling: false);
+    }
+    return false;
+  }
+
+  void _setPageState({int? page, bool? scrolling}) {
+    final wasLyricActive = _lyricPageActive;
+    final nextPage = page ?? _page;
+    final nextScrolling = scrolling ?? _pageScrolling;
+
+    if (nextPage == _page && nextScrolling == _pageScrolling) {
+      return;
+    }
+
+    setState(() {
+      _page = nextPage;
+      _pageScrolling = nextScrolling;
+      final nextLyricActive = _page == 1 && !_pageScrolling;
+      if (!wasLyricActive && nextLyricActive) {
+        _lyricFocusRequest++;
+      }
+    });
   }
 }
 
@@ -232,13 +269,11 @@ class _TopBar extends StatelessWidget {
     required this.auth,
     required this.song,
     required this.onClose,
-    required this.onQueue,
   });
 
   final AuthController auth;
   final Song song;
   final VoidCallback onClose;
-  final VoidCallback onQueue;
 
   @override
   Widget build(BuildContext context) {
@@ -286,13 +321,9 @@ class _TopBar extends StatelessWidget {
               _GlassIconButton(
                 tooltip: liked ? '取消喜欢' : '喜欢',
                 onPressed: () => auth.toggleLike(song),
-                icon: liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              ),
-              const SizedBox(width: 8),
-              _GlassIconButton(
-                tooltip: '队列',
-                onPressed: onQueue,
-                icon: Icons.more_horiz_rounded,
+                icon: liked
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
               ),
             ],
           ),
@@ -302,14 +333,30 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _PosterPlayerPage extends StatelessWidget {
-  const _PosterPlayerPage({required this.player, required this.song});
+class _PosterPlayerPage extends StatefulWidget {
+  const _PosterPlayerPage({
+    super.key,
+    required this.player,
+    required this.song,
+    required this.onQueue,
+  });
 
   final PlayerController player;
   final Song song;
+  final VoidCallback onQueue;
+
+  @override
+  State<_PosterPlayerPage> createState() => _PosterPlayerPageState();
+}
+
+class _PosterPlayerPageState extends State<_PosterPlayerPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 620;
@@ -324,18 +371,22 @@ class _PosterPlayerPage extends StatelessWidget {
                 child: AspectRatio(
                   aspectRatio: 1,
                   child: Artwork(
-                    url: song.coverUrl,
+                    url: widget.song.coverUrl,
                     size: double.infinity,
                     borderRadius: 8,
                   ),
                 ),
               ),
               SizedBox(height: compact ? 18 : 30),
-              _PosterLyricPreview(player: player),
+              _PosterLyricPreview(player: widget.player),
               const Spacer(),
-              _Progress(player: player, bright: true),
+              _Progress(player: widget.player, bright: true),
               const SizedBox(height: 10),
-              _Controls(player: player, bright: true),
+              _Controls(
+                player: widget.player,
+                bright: true,
+                onQueue: widget.onQueue,
+              ),
             ],
           ),
         );
@@ -600,24 +651,32 @@ class _MarqueeSingleLineState extends State<_MarqueeSingleLine>
 
 class _LyricPlayerPage extends StatefulWidget {
   const _LyricPlayerPage({
+    super.key,
     required this.player,
     required this.song,
     required this.focusRequest,
+    required this.isPageActive,
   });
 
   final PlayerController player;
   final Song song;
   final int focusRequest;
+  final bool isPageActive;
 
   @override
   State<_LyricPlayerPage> createState() => _LyricPlayerPageState();
 }
 
-class _LyricPlayerPageState extends State<_LyricPlayerPage> {
+class _LyricPlayerPageState extends State<_LyricPlayerPage>
+    with AutomaticKeepAliveClientMixin {
   var _showTranslation = true;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final hasTranslation = widget.player.lyrics.any(
       (line) => line.translation != null && line.translation!.isNotEmpty,
     );
@@ -634,6 +693,7 @@ class _LyricPlayerPageState extends State<_LyricPlayerPage> {
             isPreparing: widget.player.isPreparing,
             showTranslation: _showTranslation,
             focusRequest: widget.focusRequest,
+            isPageActive: widget.isPageActive,
           ),
           if (hasTranslation)
             Positioned(
@@ -664,6 +724,7 @@ class _LyricViewport extends StatefulWidget {
     required this.isPreparing,
     required this.showTranslation,
     required this.focusRequest,
+    required this.isPageActive,
   });
 
   final PlayerController player;
@@ -673,6 +734,7 @@ class _LyricViewport extends StatefulWidget {
   final bool isPreparing;
   final bool showTranslation;
   final int focusRequest;
+  final bool isPageActive;
 
   @override
   State<_LyricViewport> createState() => _LyricViewportState();
@@ -686,6 +748,7 @@ class _LyricViewportState extends State<_LyricViewport> {
   Duration _framePosition = Duration.zero;
   int _frameActiveIndex = -1;
   bool _manualScrolling = false;
+  bool _autoScrolling = false;
   double _scrollStretch = 0;
 
   @override
@@ -710,7 +773,9 @@ class _LyricViewportState extends State<_LyricViewport> {
     final lyricsChanged = oldWidget.lyrics != widget.lyrics;
     final focusRequested = oldWidget.focusRequest != widget.focusRequest;
     final seekChanged = oldWidget.seekRevision != widget.seekRevision;
-    if (lyricsChanged || focusRequested || seekChanged) {
+    final becameActive = !oldWidget.isPageActive && widget.isPageActive;
+    if ((lyricsChanged || focusRequested || seekChanged || becameActive) &&
+        widget.isPageActive) {
       _frameActiveIndex = nextIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) => _forceLockToActive());
     }
@@ -734,6 +799,7 @@ class _LyricViewportState extends State<_LyricViewport> {
 
   void _syncTicker() {
     final shouldTick =
+        widget.isPageActive &&
         widget.player.isPlaying &&
         widget.lyrics.isNotEmpty &&
         !widget.player.isScrubbing;
@@ -765,7 +831,7 @@ class _LyricViewportState extends State<_LyricViewport> {
   }
 
   void _scrollToActive() {
-    if (_manualScrolling || _frameActiveIndex < 0) {
+    if (!widget.isPageActive || _manualScrolling || _frameActiveIndex < 0) {
       return;
     }
     if (_frameActiveIndex >= _lineKeys.length) {
@@ -777,17 +843,24 @@ class _LyricViewportState extends State<_LyricViewport> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActive());
       return;
     }
+    _autoScrolling = true;
     Scrollable.ensureVisible(
       context,
       alignment: .34,
       duration: const Duration(milliseconds: 380),
       curve: Curves.easeOutCubic,
       alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-    );
+    ).whenComplete(() {
+      if (mounted) {
+        _autoScrolling = false;
+      }
+    });
   }
 
   void _jumpToEstimatedPosition() {
-    if (!_controller.hasClients || _frameActiveIndex < 0) {
+    if (!widget.isPageActive ||
+        !_controller.hasClients ||
+        _frameActiveIndex < 0) {
       return;
     }
     const topPadding = 180.0;
@@ -805,7 +878,7 @@ class _LyricViewportState extends State<_LyricViewport> {
   }
 
   void _forceLockToActive() {
-    if (!mounted) {
+    if (!mounted || !widget.isPageActive) {
       return;
     }
     _resumeAutoScrollTimer?.cancel();
@@ -828,12 +901,16 @@ class _LyricViewportState extends State<_LyricViewport> {
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification is ScrollUpdateNotification &&
+    if (_autoScrolling) {
+      return false;
+    }
+
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _pauseAutoScroll();
+    } else if (notification is ScrollUpdateNotification &&
         notification.dragDetails != null) {
       _applyStretch(notification.scrollDelta ?? 0);
-      _pauseAutoScroll();
-    } else if (notification is UserScrollNotification &&
-        notification.direction != ScrollDirection.idle) {
       _pauseAutoScroll();
     } else if (notification is ScrollEndNotification) {
       _settleStretch();
@@ -1251,9 +1328,14 @@ class _Progress extends StatelessWidget {
 }
 
 class _Controls extends StatelessWidget {
-  const _Controls({required this.player, this.bright = false});
+  const _Controls({
+    required this.player,
+    required this.onQueue,
+    this.bright = false,
+  });
 
   final PlayerController player;
+  final VoidCallback onQueue;
   final bool bright;
 
   @override
@@ -1262,49 +1344,114 @@ class _Controls extends StatelessWidget {
         ? Colors.white
         : Theme.of(context).colorScheme.onSurface;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          tooltip: '上一首',
-          color: color,
-          iconSize: 42,
-          onPressed: player.previous,
-          icon: const Icon(Icons.skip_previous_rounded),
-        ),
-        const SizedBox(width: 24),
-        SizedBox.square(
-          dimension: 76,
-          child: IconButton(
-            tooltip: player.isPlaying ? '暂停' : '播放',
-            color: color,
-            onPressed: player.isPreparing ? null : player.togglePlay,
-            iconSize: 58,
-            icon: player.isPreparing
-                ? const SizedBox.square(
-                    dimension: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: Colors.white,
-                    ),
-                  )
-                : Icon(
-                    player.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
-          ),
-        ),
-        const SizedBox(width: 24),
-        IconButton(
-          tooltip: '下一首',
-          color: color,
-          iconSize: 42,
-          onPressed: player.next,
-          icon: const Icon(Icons.skip_next_rounded),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final edgeButtonSize = compact ? 40.0 : 44.0;
+        final edgeIconSize = compact ? 24.0 : 27.0;
+        final skipButtonSize = compact ? 50.0 : 56.0;
+        final skipIconSize = compact ? 40.0 : 46.0;
+        final playButtonSize = compact ? 72.0 : 82.0;
+        final playIconSize = compact ? 56.0 : 64.0;
+        final gap = compact ? 5.0 : 9.0;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox.square(
+              dimension: edgeButtonSize,
+              child: IconButton(
+                tooltip: player.playbackModeLabel,
+                color: color,
+                iconSize: edgeIconSize,
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  player.cyclePlaybackMode();
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      SnackBar(
+                        content: Text('已切换到${player.playbackModeLabel}'),
+                        duration: const Duration(milliseconds: 1100),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                },
+                icon: Icon(_playbackModeIcon(player.playbackMode)),
+              ),
+            ),
+            SizedBox(width: gap),
+            SizedBox.square(
+              dimension: skipButtonSize,
+              child: IconButton(
+                tooltip: '上一首',
+                color: color,
+                iconSize: skipIconSize,
+                padding: EdgeInsets.zero,
+                onPressed: player.previous,
+                icon: const Icon(Icons.skip_previous_rounded),
+              ),
+            ),
+            SizedBox(width: gap),
+            SizedBox.square(
+              dimension: playButtonSize,
+              child: IconButton(
+                tooltip: player.isPlaying ? '暂停' : '播放',
+                color: color,
+                padding: EdgeInsets.zero,
+                onPressed: player.isPreparing ? null : player.togglePlay,
+                iconSize: playIconSize,
+                icon: player.isPreparing
+                    ? SizedBox.square(
+                        dimension: compact ? 24 : 28,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        player.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
+              ),
+            ),
+            SizedBox(width: gap),
+            SizedBox.square(
+              dimension: skipButtonSize,
+              child: IconButton(
+                tooltip: '下一首',
+                color: color,
+                iconSize: skipIconSize,
+                padding: EdgeInsets.zero,
+                onPressed: player.next,
+                icon: const Icon(Icons.skip_next_rounded),
+              ),
+            ),
+            SizedBox(width: gap),
+            SizedBox.square(
+              dimension: edgeButtonSize,
+              child: IconButton(
+                tooltip: '播放列表',
+                color: color,
+                iconSize: edgeIconSize,
+                padding: EdgeInsets.zero,
+                onPressed: onQueue,
+                icon: const Icon(Icons.queue_music_rounded),
+              ),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  IconData _playbackModeIcon(PlaybackMode mode) {
+    return switch (mode) {
+      PlaybackMode.playlistLoop => Icons.repeat_rounded,
+      PlaybackMode.shuffle => Icons.shuffle_rounded,
+      PlaybackMode.singleLoop => Icons.repeat_one_rounded,
+    };
   }
 }
 

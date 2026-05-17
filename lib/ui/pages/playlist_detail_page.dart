@@ -22,91 +22,193 @@ class PlaylistDetailPage extends StatefulWidget {
 }
 
 class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
-  late Future<PlaylistDetail> _future;
+  static const _pageSize = 50;
+
+  final _scrollController = ScrollController();
+  final _songs = <Song>[];
+
+  PlaylistSummary? _info;
+  var _nextPage = 1;
+  var _hasMore = true;
+  var _isInitialLoading = true;
+  var _isLoadingMore = false;
+  String? _errorMessage;
+  String? _loadMoreError;
 
   @override
   void initState() {
     super.initState();
-    _future = widget.api.playlistDetail(widget.playlist.id);
+    _scrollController.addListener(_maybeLoadMore);
+    _loadInitial();
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_maybeLoadMore)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitial() async {
+    setState(() {
+      _isInitialLoading = true;
+      _isLoadingMore = false;
+      _errorMessage = null;
+      _loadMoreError = null;
+      _nextPage = 1;
+      _hasMore = true;
+      _songs.clear();
+    });
+
+    try {
+      final results = await Future.wait([
+        widget.api.playlistInfo(widget.playlist.id),
+        widget.api.playlistSongs(
+          widget.playlist.id,
+          page: 1,
+          pageSize: _pageSize,
+        ),
+      ]);
+      if (!mounted) return;
+
+      final info = results[0] as PlaylistSummary;
+      final songs = results[1] as List<Song>;
+      setState(() {
+        _info = info;
+        _songs.addAll(songs);
+        _nextPage = 2;
+        _hasMore =
+            _songs.length < (info.songCount ?? 1 << 31) &&
+            songs.length == _pageSize;
+        _isInitialLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = error.toString();
+        _isInitialLoading = false;
+      });
+    }
+  }
+
+  void _maybeLoadMore() {
+    if (!_scrollController.hasClients || !_hasMore || _isLoadingMore) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    if (position.extentAfter < 520) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+      _loadMoreError = null;
+    });
+
+    try {
+      final songs = await widget.api.playlistSongs(
+        widget.playlist.id,
+        page: _nextPage,
+        pageSize: _pageSize,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _songs.addAll(songs);
+        _nextPage++;
+        _hasMore =
+            songs.length == _pageSize &&
+            _songs.length < (_info?.songCount ?? 1 << 31);
+        _isLoadingMore = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadMoreError = error.toString();
+        _isLoadingMore = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder<PlaylistDetail>(
-        future: _future,
-        builder: (context, snapshot) {
-          final detail = snapshot.data;
-          final info = detail?.info ?? widget.playlist;
-
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                pinned: true,
-                stretch: true,
-                expandedHeight: 198,
-                surfaceTintColor: Colors.transparent,
-                title: Text(
-                  info.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  stretchModes: const [StretchMode.zoomBackground],
-                  background: _HeroHeader(info: info),
-                ),
+      body: CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            stretch: true,
+            expandedHeight: 198,
+            surfaceTintColor: Colors.transparent,
+            title: Text(
+              (_info ?? widget.playlist).title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              stretchModes: const [StretchMode.zoomBackground],
+              background: _HeroHeader(info: _info ?? widget.playlist),
+            ),
+          ),
+          if (_isInitialLoading)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_errorMessage case final message?)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _DetailError(message: message, onRetry: _loadInitial),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: _Actions(
+                count: _info?.songCount ?? _songs.length,
+                loadedCount: _songs.length,
+                onPlay: _songs.isEmpty
+                    ? null
+                    : () => widget.player.playSong(
+                        _songs.first,
+                        queue: List<Song>.of(_songs),
+                      ),
               ),
-              if (snapshot.connectionState == ConnectionState.waiting)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (snapshot.hasError)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _DetailError(
-                    message: snapshot.error.toString(),
-                    onRetry: () => setState(() {
-                      _future = widget.api.playlistDetail(widget.playlist.id);
-                    }),
-                  ),
-                )
-              else ...[
-                SliverToBoxAdapter(
-                  child: _Actions(
-                    count: detail!.songs.length,
-                    onPlay: detail.songs.isEmpty
-                        ? null
-                        : () => widget.player.playSong(
-                            detail.songs.first,
-                            queue: detail.songs,
-                          ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 34),
-                  sliver: SliverList.separated(
-                    itemCount: detail.songs.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 2),
-                    itemBuilder: (context, index) {
-                      final song = detail.songs[index];
-                      return _SongRow(
-                        song: song,
-                        index: index + 1,
-                        onTap: () =>
-                            widget.player.playSong(song, queue: detail.songs),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              sliver: SliverList.separated(
+                itemCount: _songs.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 2),
+                itemBuilder: (context, index) {
+                  final song = _songs[index];
+                  return _SongRow(
+                    song: song,
+                    index: index + 1,
+                    onTap: () => widget.player.playSong(
+                      song,
+                      queue: List<Song>.of(_songs),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: _LoadMoreFooter(
+                hasMore: _hasMore,
+                isLoading: _isLoadingMore,
+                errorMessage: _loadMoreError,
+                onRetry: _loadMore,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -211,9 +313,14 @@ class _HeroHeader extends StatelessWidget {
 }
 
 class _Actions extends StatelessWidget {
-  const _Actions({required this.count, required this.onPlay});
+  const _Actions({
+    required this.count,
+    required this.loadedCount,
+    required this.onPlay,
+  });
 
   final int count;
+  final int loadedCount;
   final VoidCallback? onPlay;
 
   @override
@@ -225,7 +332,9 @@ class _Actions extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '$count 首歌曲',
+              loadedCount >= count
+                  ? '$count 首歌曲'
+                  : '已加载 $loadedCount / $count 首',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -242,6 +351,63 @@ class _Actions extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LoadMoreFooter extends StatelessWidget {
+  const _LoadMoreFooter({
+    required this.hasMore,
+    required this.isLoading,
+    required this.errorMessage,
+    required this.onRetry,
+  });
+
+  final bool hasMore;
+  final bool isLoading;
+  final String? errorMessage;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (errorMessage != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 34),
+        child: Center(
+          child: TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('加载失败，点击重试'),
+          ),
+        ),
+      );
+    }
+
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(18, 14, 18, 34),
+        child: Center(
+          child: SizedBox.square(
+            dimension: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 34),
+      child: Center(
+        child: Text(
+          hasMore ? '继续下滑加载更多' : '已加载全部',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
