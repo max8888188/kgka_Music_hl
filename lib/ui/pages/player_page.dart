@@ -1440,6 +1440,7 @@ class _LyricPlayerPageState extends State<_LyricPlayerPage>
         children: [
           _LyricViewport(
             player: widget.player,
+            songHash: widget.song.hash,
             lyrics: widget.player.lyrics,
             activeIndex: widget.player.activeLyricIndex,
             seekRevision: widget.player.seekRevision,
@@ -1472,6 +1473,7 @@ class _LyricPlayerPageState extends State<_LyricPlayerPage>
 class _LyricViewport extends StatefulWidget {
   const _LyricViewport({
     required this.player,
+    required this.songHash,
     required this.lyrics,
     required this.activeIndex,
     required this.seekRevision,
@@ -1483,6 +1485,7 @@ class _LyricViewport extends StatefulWidget {
   });
 
   final PlayerController player;
+  final String songHash;
   final List<LyricLine> lyrics;
   final int activeIndex;
   final int seekRevision;
@@ -1524,29 +1527,33 @@ class _LyricViewportState extends State<_LyricViewport> {
   @override
   void didUpdateWidget(covariant _LyricViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncLineKeys();
+    final songChanged = oldWidget.songHash != widget.songHash;
+    final lyricsChanged = oldWidget.lyrics != widget.lyrics;
+    _syncLineKeys(force: songChanged || lyricsChanged);
     if (!widget.player.isScrubbing) {
       _framePosition = widget.player.smoothPosition;
     }
     final nextIndex = _activeIndexFor(_framePosition);
-    final lyricsChanged = oldWidget.lyrics != widget.lyrics;
     final focusRequested = oldWidget.focusRequest != widget.focusRequest;
     final seekChanged = oldWidget.seekRevision != widget.seekRevision;
     final activeIndexChanged = oldWidget.activeIndex != widget.activeIndex;
     final becameActive = !oldWidget.isPageActive && widget.isPageActive;
     final transitionFinished =
         oldWidget.isPageTransitioning && !widget.isPageTransitioning;
-    if (lyricsChanged ||
+    if (songChanged ||
+        lyricsChanged ||
         focusRequested ||
         seekChanged ||
         activeIndexChanged ||
         becameActive ||
         transitionFinished) {
+      final shouldResetManualScroll =
+          songChanged || lyricsChanged || focusRequested || seekChanged;
       setState(() => _frameActiveIndex = nextIndex);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _syncToActive(
           immediate: true,
-          resetManualScroll: focusRequested || seekChanged,
+          resetManualScroll: shouldResetManualScroll,
         );
       });
     }
@@ -1561,8 +1568,8 @@ class _LyricViewportState extends State<_LyricViewport> {
     super.dispose();
   }
 
-  void _syncLineKeys() {
-    if (_lineKeys.length == widget.lyrics.length) {
+  void _syncLineKeys({bool force = false}) {
+    if (!force && _lineKeys.length == widget.lyrics.length) {
       return;
     }
     _lineKeys = List.generate(widget.lyrics.length, (_) => GlobalKey());
@@ -1688,6 +1695,7 @@ class _LyricViewportState extends State<_LyricViewport> {
     if (resetManualScroll) {
       _resumeAutoScrollTimer?.cancel();
       _manualScrolling = false;
+      _scrollStretch = 0;
     }
     if (_manualScrolling) {
       return;
