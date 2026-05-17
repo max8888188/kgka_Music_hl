@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/music_models.dart';
 import '../services/music_api.dart';
@@ -11,7 +12,12 @@ import '../services/music_audio_handler.dart';
 enum PlaybackMode { playlistLoop, shuffle, singleLoop }
 
 class PlayerController extends ChangeNotifier {
+  static const _listenTimeSettingKey = 'settings.add_listening_time_enabled';
+  static const _listenTimeReportInterval = Duration(minutes: 30);
+  static const _listenTimeCheckInterval = Duration(minutes: 1);
+
   PlayerController(this._api, this._audioHandler) {
+    unawaited(_restoreListeningTimeSetting());
     _audioHandler.attachTransportControls(onNext: next, onPrevious: previous);
     _positionSub = audioPlayer.positionStream.listen((value) {
       if (!_isSeeking) {
@@ -32,6 +38,7 @@ class PlayerController extends ChangeNotifier {
       if (!_isSeeking) {
         _setPositionBase(audioPlayer.position, playing: isPlaying);
       }
+      _syncListeningTimeTracker();
       notifyListeners();
     });
     _processingStateSub = audioPlayer.processingStateStream.distinct().listen((
@@ -57,6 +64,10 @@ class PlayerController extends ChangeNotifier {
   final Stopwatch _positionClock = Stopwatch();
   final _random = math.Random();
   Timer? _completionFallbackTimer;
+  Timer? _listenTimeTimer;
+  DateTime? _listenTimeStartedAt;
+  Duration _pendingListenTime = Duration.zero;
+  bool _isReportingListenTime = false;
   int _seekSerial = 0;
   bool _isSeeking = false;
   bool _isScrubbing = false;
@@ -72,6 +83,7 @@ class PlayerController extends ChangeNotifier {
   bool isPlaying = false;
   bool isBuffering = false;
   bool isPreparing = false;
+  bool addListeningTimeEnabled = true;
   String? errorMessage;
   int seekRevision = 0;
   bool get isScrubbing => _isScrubbing;
@@ -129,6 +141,21 @@ class PlayerController extends ChangeNotifier {
     };
     notifyListeners();
     return playbackMode;
+  }
+
+  Future<void> setAddListeningTimeEnabled(bool enabled) async {
+    if (addListeningTimeEnabled == enabled) {
+      return;
+    }
+    addListeningTimeEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_listenTimeSettingKey, enabled);
+    if (!enabled) {
+      _resetListeningTimeTracker();
+    } else {
+      _syncListeningTimeTracker();
+    }
+    notifyListeners();
   }
 
   Future<void> playSong(Song song, {List<Song>? queue}) async {
@@ -290,6 +317,82 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  Future<void> _restoreListeningTimeSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    addListeningTimeEnabled =
+        prefs.getBool(_listenTimeSettingKey) ?? addListeningTimeEnabled;
+    _syncListeningTimeTracker();
+    notifyListeners();
+  }
+
+  void _syncListeningTimeTracker() {
+    final shouldTrack =
+        addListeningTimeEnabled && isPlaying && currentSong != null;
+    if (shouldTrack) {
+      _listenTimeStartedAt ??= DateTime.now();
+      _listenTimeTimer ??= Timer.periodic(
+        _listenTimeCheckInterval,
+        (_) => unawaited(_maybeReportListeningTime()),
+      );
+      return;
+    }
+
+    _pauseListeningTimeTracker();
+  }
+
+  void _pauseListeningTimeTracker() {
+    final startedAt = _listenTimeStartedAt;
+    if (startedAt != null) {
+      _pendingListenTime += DateTime.now().difference(startedAt);
+      _listenTimeStartedAt = null;
+    }
+    _listenTimeTimer?.cancel();
+    _listenTimeTimer = null;
+  }
+
+  void _resetListeningTimeTracker() {
+    _listenTimeStartedAt = null;
+    _pendingListenTime = Duration.zero;
+    _listenTimeTimer?.cancel();
+    _listenTimeTimer = null;
+  }
+
+  Duration _trackedListeningTime() {
+    final startedAt = _listenTimeStartedAt;
+    if (startedAt == null) {
+      return _pendingListenTime;
+    }
+    return _pendingListenTime + DateTime.now().difference(startedAt);
+  }
+
+  Future<void> _maybeReportListeningTime() async {
+    if (_isReportingListenTime || !addListeningTimeEnabled) {
+      return;
+    }
+    if (_trackedListeningTime() < _listenTimeReportInterval) {
+      return;
+    }
+
+    _isReportingListenTime = true;
+    try {
+      await _api.addListeningTime();
+      final stillPlaying = isPlaying && currentSong != null;
+      final remainder = _trackedListeningTime() - _listenTimeReportInterval;
+      _pendingListenTime = remainder > Duration.zero
+          ? remainder
+          : Duration.zero;
+      _listenTimeStartedAt = stillPlaying ? DateTime.now() : null;
+      if (!stillPlaying) {
+        _listenTimeTimer?.cancel();
+        _listenTimeTimer = null;
+      }
+    } catch (error) {
+      debugPrint('[KA Music][listen-time] report failed: $error');
+    } finally {
+      _isReportingListenTime = false;
+    }
+  }
+
   Song? _nextSong() {
     if (queue.isEmpty) {
       return currentSong;
@@ -317,6 +420,7 @@ class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pauseListeningTimeTracker();
     _positionSub.cancel();
     _durationSub.cancel();
     _stateSub.cancel();

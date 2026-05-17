@@ -2,6 +2,7 @@ class AppConfig {
   const AppConfig._();
 
   static const appName = 'KA Music';
+  static const appVersion = '1.0.0';
 
   static const apiBaseUrl = String.fromEnvironment(
     'KA_MUSIC_API_BASE_URL',

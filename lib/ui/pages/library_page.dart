@@ -6,6 +6,7 @@ import '../../models/music_models.dart';
 import '../../services/music_api.dart';
 import '../widgets/artwork.dart';
 import 'playlist_detail_page.dart';
+import 'settings_page.dart';
 
 class LibraryPage extends StatelessWidget {
   const LibraryPage({
@@ -30,6 +31,14 @@ class LibraryPage extends StatelessWidget {
       );
     }
 
+    void openSettings() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SettingsPage(auth: auth, player: player),
+        ),
+      );
+    }
+
     return SafeArea(
       bottom: false,
       child: AnimatedBuilder(
@@ -40,7 +49,7 @@ class LibraryPage extends StatelessWidget {
 
           return CustomScrollView(
             slivers: [
-              const SliverToBoxAdapter(child: _MyHeader()),
+              SliverToBoxAdapter(child: _MyHeader(onSettingsTap: openSettings)),
               SliverToBoxAdapter(child: _AccountCard(auth: auth)),
               SliverToBoxAdapter(
                 child: _QuickStats(
@@ -110,18 +119,31 @@ class LibraryPage extends StatelessWidget {
 }
 
 class _MyHeader extends StatelessWidget {
-  const _MyHeader();
+  const _MyHeader({required this.onSettingsTap});
+
+  final VoidCallback onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-      child: Text(
-        '我的',
-        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-          fontWeight: FontWeight.w900,
-          fontSize: 26,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '我的',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+                fontSize: 26,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '设置',
+            onPressed: onSettingsTap,
+            icon: const Icon(Icons.settings_rounded),
+          ),
+        ],
       ),
     );
   }
@@ -176,16 +198,6 @@ class _AccountCard extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: auth.isLoading ? null : auth.refreshProfile,
-            icon: const Icon(Icons.sync_rounded),
-          ),
-          IconButton(
-            tooltip: '退出登录',
-            onPressed: auth.logout,
-            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),

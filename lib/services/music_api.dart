@@ -150,16 +150,22 @@ class MusicApi {
     await _client.get('/youth/day/vip');
   }
 
+  Future<void> addListeningTime() async {
+    await _client.post('/listen/timeadd');
+  }
+
   Future<MusicCommentResponse> musicComments(
     String mixsongid, {
     int page = 1,
     int pageSize = 30,
   }) async {
-    final json = asMap(await _client.get('/comment/music', {
-      'mixsongid': mixsongid,
-      'page': page,
-      'pagesize': pageSize,
-    }));
+    final json = asMap(
+      await _client.get('/comment/music', {
+        'mixsongid': mixsongid,
+        'page': page,
+        'pagesize': pageSize,
+      }),
+    );
     return MusicCommentResponse.fromJson(json);
   }
 
