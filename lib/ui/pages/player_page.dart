@@ -11,6 +11,7 @@ import '../../controllers/player_controller.dart';
 import '../../models/music_models.dart';
 import '../widgets/artwork.dart';
 import '../widgets/song_action_sheets.dart';
+import 'artist_detail_page.dart';
 import 'comment_page.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -178,6 +179,7 @@ class _PlayerBodyState extends State<_PlayerBody> {
                       auth: widget.auth,
                       song: widget.song,
                       onClose: widget.onClose,
+                      onArtistTap: _openArtist,
                     ),
                   Expanded(
                     child: landscape
@@ -187,6 +189,7 @@ class _PlayerBodyState extends State<_PlayerBody> {
                             song: widget.song,
                             onClose: widget.onClose,
                             onQueue: widget.onQueue,
+                            onArtistTap: _openArtist,
                           )
                         : NotificationListener<ScrollNotification>(
                             onNotification: _handlePageScrollNotification,
@@ -276,6 +279,65 @@ class _PlayerBodyState extends State<_PlayerBody> {
       }
     });
   }
+
+  Future<void> _openArtist(Song song) async {
+    final artists = song.artists
+        .where((artist) => artist.id.isNotEmpty)
+        .toList();
+    if (artists.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无歌手详情')));
+      return;
+    }
+
+    ArtistRef? selected;
+    if (artists.length == 1) {
+      selected = artists.first;
+    } else {
+      selected = await showModalBottomSheet<ArtistRef>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        builder: (context) {
+          return SafeArea(
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              itemCount: artists.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 4),
+              itemBuilder: (context, index) {
+                final artist = artists[index];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: artist.avatarUrl == null
+                        ? null
+                        : NetworkImage(artist.avatarUrl!),
+                    child: artist.avatarUrl == null
+                        ? const Icon(Icons.person_rounded)
+                        : null,
+                  ),
+                  title: Text(artist.name),
+                  onTap: () => Navigator.of(context).pop(artist),
+                );
+              },
+            ),
+          );
+        },
+      );
+    }
+
+    if (selected == null || !mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArtistDetailPage(
+          api: widget.player.api,
+          artist: selected!,
+          player: widget.player,
+        ),
+      ),
+    );
+  }
 }
 
 class _ArtworkBackground extends StatelessWidget {
@@ -348,6 +410,7 @@ class _LandscapePlayerContent extends StatelessWidget {
     required this.song,
     required this.onClose,
     required this.onQueue,
+    required this.onArtistTap,
   });
 
   final PlayerController player;
@@ -355,6 +418,7 @@ class _LandscapePlayerContent extends StatelessWidget {
   final Song song;
   final VoidCallback onClose;
   final VoidCallback onQueue;
+  final ValueChanged<Song> onArtistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -375,6 +439,7 @@ class _LandscapePlayerContent extends StatelessWidget {
                 song: song,
                 onClose: onClose,
                 compact: compact,
+                onArtistTap: onArtistTap,
               ),
               SizedBox(height: compact ? 2 : 10),
               Expanded(
@@ -414,12 +479,14 @@ class _LandscapeHeader extends StatelessWidget {
     required this.song,
     required this.onClose,
     required this.compact,
+    required this.onArtistTap,
   });
 
   final AuthController auth;
   final Song song;
   final VoidCallback onClose;
   final bool compact;
+  final ValueChanged<Song> onArtistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -455,13 +522,18 @@ class _LandscapeHeader extends StatelessWidget {
                       ),
                     ),
                     if (!compact)
-                      Text(
-                        song.artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: .56),
-                          fontWeight: FontWeight.w700,
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onArtistTap(song),
+                        child: Text(
+                          song.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: .7),
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ),
                   ],
@@ -915,11 +987,13 @@ class _TopBar extends StatelessWidget {
     required this.auth,
     required this.song,
     required this.onClose,
+    required this.onArtistTap,
   });
 
   final AuthController auth;
   final Song song;
   final VoidCallback onClose;
+  final ValueChanged<Song> onArtistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -952,13 +1026,17 @@ class _TopBar extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    Text(
-                      song.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: .72),
-                        fontWeight: FontWeight.w600,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onArtistTap(song),
+                      child: Text(
+                        song.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white.withValues(alpha: .82),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],

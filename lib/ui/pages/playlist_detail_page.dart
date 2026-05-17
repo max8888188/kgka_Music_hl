@@ -5,6 +5,7 @@ import '../../controllers/player_controller.dart';
 import '../../models/music_models.dart';
 import '../../services/music_api.dart';
 import '../widgets/artwork.dart';
+import '../widgets/mini_player.dart';
 import '../widgets/now_playing_badge.dart';
 import '../widgets/song_action_sheets.dart';
 
@@ -240,117 +241,132 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            stretch: true,
-            expandedHeight: 198,
-            surfaceTintColor: Colors.transparent,
-            title: Text(
-              (_info ?? widget.playlist).title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            actions: [
-              if (_isMutating)
-                const Padding(
-                  padding: EdgeInsets.only(right: 16),
-                  child: Center(
-                    child: SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    ),
+      extendBody: true,
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                stretch: true,
+                expandedHeight: 198,
+                surfaceTintColor: Colors.transparent,
+                title: Text(
+                  (_info ?? widget.playlist).title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
                   ),
-                )
-              else if (!_isInLibrary || !_libraryPlaylist.isLikedPlaylist)
-                PopupMenuButton<_PlaylistAction>(
-                  onSelected: (action) {
-                    switch (action) {
-                      case _PlaylistAction.collect:
-                        _collectPlaylist();
-                      case _PlaylistAction.deleteOrUncollect:
-                        _deleteOrUncollectPlaylist();
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    if (!_isInLibrary)
-                      const PopupMenuItem(
-                        value: _PlaylistAction.collect,
-                        child: Text('收藏歌单'),
-                      ),
-                    if (_isInLibrary && !_libraryPlaylist.isLikedPlaylist)
-                      PopupMenuItem(
-                        value: _PlaylistAction.deleteOrUncollect,
-                        child: Text(
-                          _libraryPlaylist.isCreatedPlaylist ? '删除歌单' : '取消收藏',
+                ),
+                actions: [
+                  if (_isMutating)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Center(
+                        child: SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
                         ),
                       ),
-                  ],
-                ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              stretchModes: const [StretchMode.zoomBackground],
-              background: _HeroHeader(info: _info ?? widget.playlist),
-            ),
-          ),
-          if (_isInitialLoading)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_errorMessage case final message?)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _DetailError(message: message, onRetry: _loadInitial),
-            )
-          else ...[
-            SliverToBoxAdapter(
-              child: _Actions(
-                count: _info?.songCount ?? _songs.length,
-                loadedCount: _songs.length,
-                onPlay: _songs.isEmpty
-                    ? null
-                    : () => widget.player.playSong(
-                        _songs.first,
-                        queue: List<Song>.of(_songs),
-                      ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-              sliver: SliverList.separated(
-                itemCount: _songs.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 2),
-                itemBuilder: (context, index) {
-                  final song = _songs[index];
-                  return _SongRow(
-                    song: song,
-                    index: index + 1,
-                    player: widget.player,
-                    canDelete: _canEdit,
-                    onTap: () => widget.player.playSong(
-                      song,
-                      queue: List<Song>.of(_songs),
+                    )
+                  else if (!_isInLibrary || !_libraryPlaylist.isLikedPlaylist)
+                    PopupMenuButton<_PlaylistAction>(
+                      onSelected: (action) {
+                        switch (action) {
+                          case _PlaylistAction.collect:
+                            _collectPlaylist();
+                          case _PlaylistAction.deleteOrUncollect:
+                            _deleteOrUncollectPlaylist();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (!_isInLibrary)
+                          const PopupMenuItem(
+                            value: _PlaylistAction.collect,
+                            child: Text('收藏歌单'),
+                          ),
+                        if (_isInLibrary && !_libraryPlaylist.isLikedPlaylist)
+                          PopupMenuItem(
+                            value: _PlaylistAction.deleteOrUncollect,
+                            child: Text(
+                              _libraryPlaylist.isCreatedPlaylist
+                                  ? '删除歌单'
+                                  : '取消收藏',
+                            ),
+                          ),
+                      ],
                     ),
-                    onAddToPlaylist: () => _addSongToPlaylist(song),
-                    onDelete: () => _removeSong(song),
-                  );
-                },
+                ],
+                flexibleSpace: FlexibleSpaceBar(
+                  stretchModes: const [StretchMode.zoomBackground],
+                  background: _HeroHeader(info: _info ?? widget.playlist),
+                ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: _LoadMoreFooter(
-                hasMore: _hasMore,
-                isLoading: _isLoadingMore,
-                errorMessage: _loadMoreError,
-                onRetry: _loadMore,
-              ),
-            ),
-          ],
+              if (_isInitialLoading)
+                const _PlaylistDetailSkeleton()
+              else if (_errorMessage case final message?)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _DetailError(message: message, onRetry: _loadInitial),
+                )
+              else ...[
+                SliverToBoxAdapter(
+                  child: _Actions(
+                    count: _info?.songCount ?? _songs.length,
+                    loadedCount: _songs.length,
+                    onPlay: _songs.isEmpty
+                        ? null
+                        : () => widget.player.playSong(
+                            _songs.first,
+                            queue: List<Song>.of(_songs),
+                          ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  sliver: SliverList.separated(
+                    itemCount: _songs.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 2),
+                    itemBuilder: (context, index) {
+                      final song = _songs[index];
+                      return _SongRow(
+                        song: song,
+                        index: index + 1,
+                        player: widget.player,
+                        canDelete: _canEdit,
+                        onTap: () => widget.player.playSong(
+                          song,
+                          queue: List<Song>.of(_songs),
+                        ),
+                        onAddToPlaylist: () => _addSongToPlaylist(song),
+                        onDelete: () => _removeSong(song),
+                      );
+                    },
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: _LoadMoreFooter(
+                    hasMore: _hasMore,
+                    isLoading: _isLoadingMore,
+                    errorMessage: _loadMoreError,
+                    onRetry: _loadMore,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: bottomInset + 10,
+            child: MiniPlayer(player: widget.player, auth: widget.auth),
+          ),
         ],
       ),
     );
@@ -446,6 +462,85 @@ class _HeroHeader extends StatelessWidget {
   }
 }
 
+class _PlaylistDetailSkeleton extends StatelessWidget {
+  const _PlaylistDetailSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 118),
+      sliver: SliverList.list(
+        children: [
+          Row(
+            children: [
+              const _SkeletonBox(width: 108, height: 18, radius: 7),
+              const Spacer(),
+              _SkeletonBox(width: 104, height: 40, radius: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+          for (var index = 0; index < 10; index++) ...[
+            const _PlaylistSkeletonSongRow(),
+            const SizedBox(height: 18),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaylistSkeletonSongRow extends StatelessWidget {
+  const _PlaylistSkeletonSongRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        _SkeletonBox(width: 50, height: 50, radius: 9),
+        SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SkeletonBox(width: double.infinity, height: 16, radius: 6),
+              SizedBox(height: 8),
+              _SkeletonBox(width: 142, height: 14, radius: 6),
+            ],
+          ),
+        ),
+        SizedBox(width: 12),
+        _SkeletonBox(width: 38, height: 14, radius: 6),
+        SizedBox(width: 18),
+        _SkeletonBox(width: 24, height: 24, radius: 12),
+      ],
+    );
+  }
+}
+
+class _SkeletonBox extends StatelessWidget {
+  const _SkeletonBox({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: .72),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: SizedBox(width: width, height: height),
+    );
+  }
+}
+
 class _Actions extends StatelessWidget {
   const _Actions({
     required this.count,
@@ -509,7 +604,7 @@ class _LoadMoreFooter extends StatelessWidget {
 
     if (errorMessage != null) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 34),
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 118),
         child: Center(
           child: TextButton.icon(
             onPressed: onRetry,
@@ -522,7 +617,7 @@ class _LoadMoreFooter extends StatelessWidget {
 
     if (isLoading) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(18, 14, 18, 34),
+        padding: EdgeInsets.fromLTRB(18, 14, 18, 118),
         child: Center(
           child: SizedBox.square(
             dimension: 22,
@@ -533,7 +628,7 @@ class _LoadMoreFooter extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 34),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 118),
       child: Center(
         child: Text(
           hasMore ? '继续下滑加载更多' : '已加载全部',

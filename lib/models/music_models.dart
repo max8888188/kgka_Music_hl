@@ -206,6 +206,7 @@ class Song {
     this.albumName,
     this.coverUrl,
     this.duration,
+    this.artists = const [],
   });
 
   final String id;
@@ -217,6 +218,7 @@ class Song {
   final String? albumName;
   final String? coverUrl;
   final Duration? duration;
+  final List<ArtistRef> artists;
 
   factory Song.fromSearch(Map<String, dynamic> json) {
     final songId =
@@ -236,6 +238,15 @@ class Song {
         asString(json['Image']) ??
         asString(json['sizable_cover']) ??
         asString(json['img']);
+    final artists = parseArtists(
+      json,
+      fallbackName:
+          asString(json['SingerName']) ??
+          asString(json['author_name']) ??
+          asString(json['singername']) ??
+          asString(json['singer_name']),
+    );
+    final artistName = artists.map((artist) => artist.name).join(' / ');
 
     return Song(
       id: songId ?? hash,
@@ -245,17 +256,19 @@ class Song {
           asString(json['name']) ??
           asString(json['audio_name']) ??
           '未知歌曲',
-      artist:
-          asString(json['SingerName']) ??
-          asString(json['author_name']) ??
-          asString(json['singername']) ??
-          asString(json['singer_name']) ??
-          '未知艺人',
+      artist: artistName.isNotEmpty
+          ? artistName
+          : asString(json['SingerName']) ??
+                asString(json['author_name']) ??
+                asString(json['singername']) ??
+                asString(json['singer_name']) ??
+                '未知艺人',
       hash: hash,
       albumId: asString(json['AlbumID']) ?? asString(json['album_id']),
       albumAudioId: songId,
       albumName: asString(json['AlbumName']) ?? asString(json['album_name']),
       coverUrl: normalizeImageUrl(imageUrl),
+      artists: artists,
       duration:
           durationFromSeconds(json['Duration']) ??
           durationFromMilliseconds(json['timelen']) ??
@@ -266,11 +279,18 @@ class Song {
 
   factory Song.fromDaily(Map<String, dynamic> json) {
     final songId = asString(json['songid']) ?? asString(json['audio_id']);
+    final artists = parseArtists(
+      json,
+      fallbackName: asString(json['author_name']),
+    );
+    final artistName = artists.map((artist) => artist.name).join(' / ');
     return Song(
       id: asString(json['mixsongid']) ?? songId ?? asString(json['hash']) ?? '',
       title:
           asString(json['songname']) ?? asString(json['audio_name']) ?? '未知歌曲',
-      artist: asString(json['author_name']) ?? '未知艺人',
+      artist: artistName.isNotEmpty
+          ? artistName
+          : asString(json['author_name']) ?? '未知艺人',
       hash:
           asString(json['hash']) ??
           asString(json['hash_320']) ??
@@ -280,35 +300,27 @@ class Song {
       albumAudioId: asString(json['mixsongid']) ?? songId,
       albumName: asString(json['album_name']),
       coverUrl: normalizeImageUrl(asString(json['sizable_cover'])),
+      artists: artists,
       duration: durationFromSeconds(json['time_length']),
     );
   }
 
   factory Song.fromPlaylist(Map<String, dynamic> json) {
-    final singers = json['singerinfo'];
-    final artist = singers is List && singers.isNotEmpty
-        ? singers
-              .whereType<Map<String, dynamic>>()
-              .map(
-                (item) =>
-                    asString(item['name']) ?? asString(item['author_name']),
-              )
-              .whereType<String>()
-              .join(' / ')
-        : null;
+    final artists = parseArtists(json);
+    final artist = artists.map((artist) => artist.name).join(' / ');
     final albumInfo = json['albuminfo'];
     final albumMap = albumInfo is Map<String, dynamic> ? albumInfo : null;
 
     return Song(
       id: asString(json['fileid']) ?? asString(json['hash']) ?? '',
       title: asString(json['name']) ?? asString(json['audio_name']) ?? '未知歌曲',
-      artist: artist?.isNotEmpty == true ? artist! : '未知艺人',
+      artist: artist.isNotEmpty ? artist : '未知艺人',
       hash: asString(json['hash']) ?? '',
       albumId: asString(json['album_id']) ?? asString(albumMap?['album_id']),
       albumAudioId:
           asString(json['mixsongid']) ??
-              asString(json['album_audio_id']) ??
-              asString(json['audio_id']),
+          asString(json['album_audio_id']) ??
+          asString(json['audio_id']),
       albumName:
           asString(albumMap?['album_name']) ?? asString(json['album_name']),
       coverUrl: normalizeImageUrl(
@@ -316,7 +328,47 @@ class Song {
             asString(albumMap?['sizable_cover']) ??
             asString(albumMap?['cover']),
       ),
+      artists: artists,
       duration: durationFromMilliseconds(json['timelen']),
+    );
+  }
+
+  factory Song.fromArtistAudio(Map<String, dynamic> json, {String? artistId}) {
+    var artists = parseArtists(
+      json,
+      fallbackName: asString(json['author_name']),
+    );
+    final authorName = asString(json['author_name']);
+    if (artistId != null &&
+        artistId.isNotEmpty &&
+        authorName != null &&
+        artists.every((artist) => artist.id.isEmpty)) {
+      artists = [ArtistRef(id: artistId, name: authorName)];
+    }
+    final artistName = artists.map((artist) => artist.name).join(' / ');
+    final transParam = asMap(json['trans_param']);
+
+    return Song(
+      id:
+          asString(json['album_audio_id']) ??
+          asString(json['audio_id']) ??
+          asString(json['hash']) ??
+          '',
+      title: asString(json['audio_name']) ?? asString(json['name']) ?? '未知歌曲',
+      artist: artistName.isNotEmpty ? artistName : authorName ?? '未知艺人',
+      hash: asString(json['hash']) ?? '',
+      albumId: asString(json['album_id']),
+      albumAudioId: asString(json['album_audio_id']),
+      albumName: asString(json['album_name']),
+      coverUrl: normalizeImageUrl(
+        asString(transParam['union_cover']) ??
+            asString(json['sizable_cover']) ??
+            asString(json['cover']),
+      ),
+      artists: artists,
+      duration:
+          durationFromMilliseconds(json['timelength']) ??
+          durationFromMilliseconds(json['timelen']),
     );
   }
 }
@@ -326,6 +378,104 @@ class PlaylistDetail {
 
   final PlaylistSummary info;
   final List<Song> songs;
+}
+
+class ArtistRef {
+  const ArtistRef({required this.id, required this.name, this.avatarUrl});
+
+  final String id;
+  final String name;
+  final String? avatarUrl;
+}
+
+class ArtistDetail {
+  const ArtistDetail({
+    required this.id,
+    required this.name,
+    this.avatarUrl,
+    this.birthday,
+  });
+
+  final String id;
+  final String name;
+  final String? avatarUrl;
+  final String? birthday;
+
+  factory ArtistDetail.fromJson(
+    Map<String, dynamic> json, {
+    required String id,
+  }) {
+    return ArtistDetail(
+      id: id,
+      name: asString(json['author_name']) ?? '未知歌手',
+      avatarUrl: normalizeImageUrl(
+        asString(json['sizable_avatar']) ?? asString(json['avatar']),
+      ),
+      birthday: asString(json['birthday']),
+    );
+  }
+}
+
+List<ArtistRef> parseArtists(
+  Map<String, dynamic> json, {
+  String? fallbackName,
+}) {
+  final artists = <ArtistRef>[];
+  void addFromMap(Map<String, dynamic> item) {
+    final id =
+        asString(item['id']) ??
+        asString(item['author_id']) ??
+        asString(item['AuthorID']) ??
+        asString(item['AuthorId']) ??
+        asString(item['singerid']) ??
+        asString(item['singer_id']) ??
+        asString(item['SingerId']) ??
+        asString(item['SingerID']);
+    final name =
+        asString(item['name']) ??
+        asString(item['author_name']) ??
+        asString(item['SingerName']) ??
+        asString(item['singername']) ??
+        asString(item['singer_name']);
+    if (id == null || id.isEmpty || name == null || name.isEmpty) {
+      return;
+    }
+    if (artists.any((artist) => artist.id == id)) {
+      return;
+    }
+    artists.add(
+      ArtistRef(
+        id: id,
+        name: name,
+        avatarUrl: normalizeImageUrl(
+          asString(item['sizable_avatar']) ?? asString(item['avatar']),
+        ),
+      ),
+    );
+  }
+
+  for (final key in const ['singerinfo', 'authors', 'author', 'singers']) {
+    final value = json[key];
+    if (value is List) {
+      for (final item in value.whereType<Map<String, dynamic>>()) {
+        addFromMap(item);
+      }
+    } else if (value is Map<String, dynamic>) {
+      addFromMap(value);
+    }
+  }
+
+  addFromMap(json);
+
+  if (artists.isEmpty && fallbackName != null && fallbackName.isNotEmpty) {
+    final names = fallbackName
+        .split(RegExp(r'\s*(?:/|、|,|，|&)\s*'))
+        .where((name) => name.trim().isNotEmpty);
+    for (final name in names) {
+      artists.add(ArtistRef(id: '', name: name.trim()));
+    }
+  }
+  return artists;
 }
 
 class DailyRecommend {
@@ -645,9 +795,9 @@ class MusicCommentItem {
           : null,
       images: json['images'] is List
           ? asList(json['images'])
-              .whereType<Map>()
-              .map((e) => CommentImage.fromJson(asMap(e)))
-              .toList()
+                .whereType<Map>()
+                .map((e) => CommentImage.fromJson(asMap(e)))
+                .toList()
           : null,
       location: asString(json['location']),
       hash: asString(json['hash']),
@@ -712,27 +862,27 @@ class MusicCommentResponse {
       maxPage: asInt(json['maxPage']),
       list: json['list'] is List
           ? asList(json['list'])
-              .whereType<Map>()
-              .map((e) => MusicCommentItem.fromJson(asMap(e)))
-              .toList()
+                .whereType<Map>()
+                .map((e) => MusicCommentItem.fromJson(asMap(e)))
+                .toList()
           : null,
       hotWordList: json['hot_word_list'] is List
           ? asList(json['hot_word_list'])
-              .whereType<Map>()
-              .map((e) => CommentHotWord.fromJson(asMap(e)))
-              .toList()
+                .whereType<Map>()
+                .map((e) => CommentHotWord.fromJson(asMap(e)))
+                .toList()
           : null,
       classifyList: json['classify_list'] is List
           ? asList(json['classify_list'])
-              .whereType<Map>()
-              .map((e) => CommentClassifyItem.fromJson(asMap(e)))
-              .toList()
+                .whereType<Map>()
+                .map((e) => CommentClassifyItem.fromJson(asMap(e)))
+                .toList()
           : null,
       tag: json['tag'] is List
           ? asList(json['tag'])
-              .whereType<Map>()
-              .map((e) => CommentTag.fromJson(asMap(e)))
-              .toList()
+                .whereType<Map>()
+                .map((e) => CommentTag.fromJson(asMap(e)))
+                .toList()
           : null,
       config: json['config'] is Map
           ? CommentConfig.fromJson(asMap(json['config']))
@@ -747,10 +897,7 @@ class MusicCommentResponse {
 }
 
 class SearchHotKeyword {
-  const SearchHotKeyword({
-    required this.keyword,
-    this.reason,
-  });
+  const SearchHotKeyword({required this.keyword, this.reason});
 
   final String keyword;
   final String? reason;

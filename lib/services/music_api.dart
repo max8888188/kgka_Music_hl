@@ -154,6 +154,58 @@ class MusicApi {
     await _client.post('/listen/timeadd');
   }
 
+  Future<ArtistDetail> artistDetail(String id) async {
+    final json = asMap(await _client.get('/artist/detail', {'id': id}));
+    return ArtistDetail.fromJson(json, id: id);
+  }
+
+  Future<List<Song>> artistAudios(
+    String id, {
+    int page = 1,
+    int pageSize = 30,
+    String sort = 'hot',
+  }) async {
+    final raw = await _client.get('/artist/audios', {
+      'id': id,
+      'page': page,
+      'pagesize': pageSize,
+      'sort': sort,
+    });
+    _debugArtistLogObject('/artist/audios raw', raw);
+
+    final json = asMap(raw);
+    final items = raw is List
+        ? raw
+        : asList(
+            json['data'] ??
+                json['songs'] ??
+                json['song'] ??
+                json['list'] ??
+                json['info'] ??
+                _firstListValue(json),
+          );
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((item) => Song.fromArtistAudio(item, artistId: id))
+        .where((song) => song.hash.isNotEmpty)
+        .toList();
+  }
+
+  Object? _firstListValue(Map<String, dynamic> json) {
+    for (final value in json.values) {
+      if (value is List) {
+        return value;
+      }
+      if (value is Map) {
+        final nested = _firstListValue(asMap(value));
+        if (nested != null) {
+          return nested;
+        }
+      }
+    }
+    return null;
+  }
+
   Future<MusicCommentResponse> musicComments(
     String mixsongid, {
     int page = 1,
@@ -880,4 +932,18 @@ void _debugPlaylistLogObject(String label, Object? value) {
     debugPrint(text.substring(start, end));
   }
   debugPrint('[KA Music][playlists] ==== end $label ====');
+}
+
+void _debugArtistLogObject(String label, Object? value) {
+  if (!kDebugMode) {
+    return;
+  }
+  final text = const JsonEncoder.withIndent('  ').convert(value);
+  debugPrint('[KA Music][artist] ==== $label ====');
+  const chunkSize = 1800;
+  for (var start = 0; start < text.length; start += chunkSize) {
+    final end = (start + chunkSize).clamp(0, text.length);
+    debugPrint(text.substring(start, end));
+  }
+  debugPrint('[KA Music][artist] ==== end $label ====');
 }
