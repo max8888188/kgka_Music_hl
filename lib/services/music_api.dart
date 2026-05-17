@@ -33,6 +33,11 @@ class MusicApi {
     return LoginSession.fromJson(json);
   }
 
+  Future<LoginSession> refreshToken() async {
+    final json = asMap(await _client.post('/login/token'));
+    return LoginSession.fromJson(json);
+  }
+
   Future<void> logout() async {
     await _client.post('/login/logout');
   }
