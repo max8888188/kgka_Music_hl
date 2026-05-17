@@ -48,6 +48,8 @@ class PlayerController extends ChangeNotifier {
 
   AudioPlayer get audioPlayer => _audioHandler.audioPlayer;
 
+  MusicApi get api => _api;
+
   late final StreamSubscription<Duration> _positionSub;
   late final StreamSubscription<Duration?> _durationSub;
   late final StreamSubscription<PlayerState> _stateSub;

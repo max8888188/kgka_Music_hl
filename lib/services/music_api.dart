@@ -150,6 +150,19 @@ class MusicApi {
     await _client.get('/youth/day/vip');
   }
 
+  Future<MusicCommentResponse> musicComments(
+    String mixsongid, {
+    int page = 1,
+    int pageSize = 30,
+  }) async {
+    final json = asMap(await _client.get('/comment/music', {
+      'mixsongid': mixsongid,
+      'page': page,
+      'pagesize': pageSize,
+    }));
+    return MusicCommentResponse.fromJson(json);
+  }
+
   Future<PlaylistSummary> playlistInfo(String id) async {
     final json = asMap(await _client.get('/playlist/detail', {'ids': id}));
     return PlaylistSummary.fromDetail(json);

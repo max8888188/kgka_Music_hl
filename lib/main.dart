@@ -113,7 +113,7 @@ class _SystemUiOverlay extends StatelessWidget {
     final overlayStyle = SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isDark ? Brightness.light : Brightness.dark,
       systemNavigationBarColor: colorScheme.surface,
       systemNavigationBarIconBrightness: isDark
           ? Brightness.light

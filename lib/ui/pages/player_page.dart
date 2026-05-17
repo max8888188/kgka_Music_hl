@@ -10,6 +10,7 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../models/music_models.dart';
 import '../widgets/artwork.dart';
+import 'comment_page.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key, required this.player, required this.auth});
@@ -156,60 +157,66 @@ class _PlayerBodyState extends State<_PlayerBody> {
     final landscape = size.width > size.height;
     _syncSystemUi(landscape);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          _ArtworkBackground(song: widget.song),
-          SafeArea(
-            top: !landscape,
-            bottom: !landscape,
-            child: Column(
-              children: [
-                if (!landscape)
-                  _TopBar(
-                    auth: widget.auth,
-                    song: widget.song,
-                    onClose: widget.onClose,
-                  ),
-                Expanded(
-                  child: landscape
-                      ? _LandscapePlayerContent(
-                          player: widget.player,
-                          auth: widget.auth,
-                          song: widget.song,
-                          onClose: widget.onClose,
-                          onQueue: widget.onQueue,
-                        )
-                      : NotificationListener<ScrollNotification>(
-                          onNotification: _handlePageScrollNotification,
-                          child: PageView(
-                            controller: _pageController,
-                            onPageChanged: (value) =>
-                                _setPageState(page: value),
-                            children: [
-                              _PosterPlayerPage(
-                                key: const PageStorageKey('poster-player-page'),
-                                player: widget.player,
-                                song: widget.song,
-                                onQueue: widget.onQueue,
-                              ),
-                              _LyricPlayerPage(
-                                key: const PageStorageKey('lyric-player-page'),
-                                player: widget.player,
-                                song: widget.song,
-                                focusRequest: _lyricFocusRequest,
-                                isPageActive: _lyricPageActive,
-                              ),
-                            ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            _ArtworkBackground(song: widget.song),
+            SafeArea(
+              top: !landscape,
+              bottom: !landscape,
+              child: Column(
+                children: [
+                  if (!landscape)
+                    _TopBar(
+                      auth: widget.auth,
+                      song: widget.song,
+                      onClose: widget.onClose,
+                    ),
+                  Expanded(
+                    child: landscape
+                        ? _LandscapePlayerContent(
+                            player: widget.player,
+                            auth: widget.auth,
+                            song: widget.song,
+                            onClose: widget.onClose,
+                            onQueue: widget.onQueue,
+                          )
+                        : NotificationListener<ScrollNotification>(
+                            onNotification: _handlePageScrollNotification,
+                            child: PageView(
+                              controller: _pageController,
+                              onPageChanged: (value) =>
+                                  _setPageState(page: value),
+                              children: [
+                                _PosterPlayerPage(
+                                  key: const PageStorageKey('poster-player-page'),
+                                  player: widget.player,
+                                  song: widget.song,
+                                  onQueue: widget.onQueue,
+                                ),
+                                _LyricPlayerPage(
+                                  key: const PageStorageKey('lyric-player-page'),
+                                  player: widget.player,
+                                  song: widget.song,
+                                  focusRequest: _lyricFocusRequest,
+                                  isPageActive: _lyricPageActive,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                ),
-                if (!landscape) _PageDots(page: _page),
-              ],
+                  ),
+                  if (!landscape) _PageDots(page: _page),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -991,6 +998,9 @@ class _PosterPlayerPageState extends State<_PosterPlayerPage>
               ),
               SizedBox(height: compact ? 14 : 26),
               _PosterLyricPreview(player: widget.player),
+              if (!compact)
+                const SizedBox(height: 4),
+              _CommentEntry(player: widget.player, song: widget.song),
               const Spacer(),
               _Progress(player: widget.player, bright: true),
               const SizedBox(height: 10),
@@ -2110,6 +2120,46 @@ class _GlassIconButton extends StatelessWidget {
           color: Colors.white,
           onPressed: onPressed,
           icon: Icon(icon),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommentEntry extends StatelessWidget {
+  const _CommentEntry({required this.player, required this.song});
+
+  final PlayerController player;
+  final Song song;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            final mixsongid = song.albumAudioId ?? song.id;
+            if (mixsongid.isEmpty) return;
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => CommentPage(
+                  api: player.api,
+                  mixsongid: mixsongid,
+                ),
+              ),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Icon(
+              Icons.comment_outlined,
+              size: 20,
+              color: Colors.white54,
+            ),
+          ),
         ),
       ),
     );
