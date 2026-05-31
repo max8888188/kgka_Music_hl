@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../models/music_models.dart';
+import '../widgets/audio_effects_sheet.dart';
 import '../widgets/audio_quality_sheet.dart';
 import '../widgets/artwork.dart';
 import '../widgets/song_action_sheets.dart';
@@ -653,6 +654,12 @@ class _LandscapeHeader extends StatelessWidget {
           onTap: () => _showAudioQualityPicker(context, player),
         ),
         SongSheetAction(
+          icon: Icons.graphic_eq_rounded,
+          title: '音效',
+          subtitle: player.audioEffectsLabel,
+          onTap: () => showAudioEffectsSheet(context: context, player: player),
+        ),
+        SongSheetAction(
           icon: Icons.playlist_add_rounded,
           title: '添加到歌单',
           onTap: () =>
@@ -1158,6 +1165,12 @@ class _TopBar extends StatelessWidget {
           title: '音质：${player.audioQuality.label}',
           subtitle: '切换当前播放音质',
           onTap: () => _showAudioQualityPicker(context, player),
+        ),
+        SongSheetAction(
+          icon: Icons.graphic_eq_rounded,
+          title: '音效',
+          subtitle: player.audioEffectsLabel,
+          onTap: () => showAudioEffectsSheet(context: context, player: player),
         ),
         SongSheetAction(
           icon: Icons.playlist_add_rounded,

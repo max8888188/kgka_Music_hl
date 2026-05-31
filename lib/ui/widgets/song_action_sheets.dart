@@ -68,19 +68,24 @@ Future<void> showSongActionSheet({
                 ],
               ),
               const SizedBox(height: 14),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  children: [
-                    for (var index = 0; index < actions.length; index++) ...[
-                      _SongActionTile(action: actions[index]),
-                      if (index != actions.length - 1)
-                        const Divider(height: 1, indent: 58),
+              Material(
+                color: colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainer,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < actions.length; index++) ...[
+                        _SongActionTile(action: actions[index]),
+                        if (index != actions.length - 1)
+                          const Divider(height: 1, indent: 58),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -130,30 +135,33 @@ Future<void> showAddToPlaylistSheet({
                 )
               else
                 Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: playlists.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 4),
-                    itemBuilder: (context, index) {
-                      final playlist = playlists[index];
-                      return ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        leading: Artwork(
-                          url: playlist.coverUrl,
-                          size: 46,
-                          borderRadius: 9,
-                        ),
-                        title: Text(
-                          playlist.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text('${playlist.songCount ?? 0} 首歌'),
-                        onTap: () => Navigator.of(context).pop(playlist),
-                      );
-                    },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: playlists.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 4),
+                      itemBuilder: (context, index) {
+                        final playlist = playlists[index];
+                        return ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          leading: Artwork(
+                            url: playlist.coverUrl,
+                            size: 46,
+                            borderRadius: 9,
+                          ),
+                          title: Text(
+                            playlist.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text('${playlist.songCount ?? 0} 首歌'),
+                          onTap: () => Navigator.of(context).pop(playlist),
+                        );
+                      },
+                    ),
                   ),
                 ),
             ],

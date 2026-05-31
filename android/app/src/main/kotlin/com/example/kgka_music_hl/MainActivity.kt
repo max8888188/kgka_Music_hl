@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.media.audiofx.BassBoost
+import android.media.audiofx.Equalizer
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
@@ -20,6 +22,10 @@ import java.io.File
 class MainActivity : AudioServiceActivity() {
     private val updateDownloads = mutableMapOf<Long, String>()
     private var downloadReceiverRegistered = false
+    private var bassBoost: BassBoost? = null
+    private var bassBoostSessionId: Int? = null
+    private var equalizer: Equalizer? = null
+    private var equalizerSessionId: Int? = null
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -72,6 +78,156 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "kgka_music_hl/audio_effects")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getEqualizerConfig" -> {
+                        val audioSessionId = call.argument<Int>("audioSessionId")
+                        runCatching {
+                            equalizerConfig(audioSessionId)
+                        }.onSuccess { config ->
+                            result.success(config)
+                        }.onFailure { error ->
+                            result.error("equalizer_config_failed", error.message, null)
+                        }
+                    }
+                    "configureEqualizer" -> {
+                        val audioSessionId = call.argument<Int>("audioSessionId")
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        val levels = call.argument<List<Int>>("levels") ?: emptyList()
+
+                        runCatching {
+                            configureEqualizer(audioSessionId, enabled, levels)
+                        }.onSuccess { supported ->
+                            result.success(supported)
+                        }.onFailure { error ->
+                            releaseEqualizer()
+                            result.error("equalizer_failed", error.message, null)
+                        }
+                    }
+                    "configureBassBoost" -> {
+                        val audioSessionId = call.argument<Int>("audioSessionId")
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        val strength = call.argument<Int>("strength") ?: 0
+
+                        runCatching {
+                            configureBassBoost(audioSessionId, enabled, strength)
+                        }.onSuccess { supported ->
+                            result.success(supported)
+                        }.onFailure { error ->
+                            releaseBassBoost()
+                            result.error("bass_boost_failed", error.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun equalizerConfig(audioSessionId: Int?): Map<String, Any>? {
+        if (audioSessionId == null || audioSessionId <= 0) {
+            return null
+        }
+        val effect = ensureEqualizer(audioSessionId)
+        val range = effect.bandLevelRange
+        val bands = (0 until effect.numberOfBands).map { index ->
+            val band = index.toShort()
+            mapOf(
+                "centerHz" to effect.getCenterFreq(band) / 1000,
+                "level" to effect.getBandLevel(band).toInt()
+            )
+        }
+        return mapOf(
+            "range" to listOf(range[0].toInt(), range[1].toInt()),
+            "bands" to bands
+        )
+    }
+
+    private fun configureEqualizer(
+        audioSessionId: Int?,
+        enabled: Boolean,
+        levels: List<Int>
+    ): Boolean {
+        if (!enabled) {
+            releaseEqualizer()
+            return true
+        }
+        if (audioSessionId == null || audioSessionId <= 0) {
+            return false
+        }
+
+        val effect = ensureEqualizer(audioSessionId)
+        val range = effect.bandLevelRange
+        val bandCount = minOf(effect.numberOfBands.toInt(), levels.size)
+        for (index in 0 until bandCount) {
+            val level = levels[index].coerceIn(range[0].toInt(), range[1].toInt())
+            effect.setBandLevel(index.toShort(), level.toShort())
+        }
+        effect.enabled = true
+        return true
+    }
+
+    private fun ensureEqualizer(audioSessionId: Int): Equalizer {
+        if (equalizerSessionId == audioSessionId && equalizer != null) {
+            return equalizer!!
+        }
+        releaseEqualizer()
+        return Equalizer(0, audioSessionId).also {
+            equalizer = it
+            equalizerSessionId = audioSessionId
+        }
+    }
+
+    private fun releaseEqualizer() {
+        equalizer?.runCatching {
+            enabled = false
+            release()
+        }
+        equalizer = null
+        equalizerSessionId = null
+    }
+
+    private fun configureBassBoost(
+        audioSessionId: Int?,
+        enabled: Boolean,
+        strength: Int
+    ): Boolean {
+        if (!enabled) {
+            releaseBassBoost()
+            return true
+        }
+        if (audioSessionId == null || audioSessionId <= 0) {
+            return false
+        }
+
+        val effect = if (bassBoostSessionId == audioSessionId && bassBoost != null) {
+            bassBoost!!
+        } else {
+            releaseBassBoost()
+            BassBoost(0, audioSessionId).also {
+                bassBoost = it
+                bassBoostSessionId = audioSessionId
+            }
+        }
+
+        val clampedStrength = strength.coerceIn(0, 1000).toShort()
+        if (effect.strengthSupported) {
+            effect.setStrength(clampedStrength)
+        } else {
+            effect.setStrength(if (clampedStrength > 0) 1000 else 0)
+        }
+        effect.enabled = true
+        return true
+    }
+
+    private fun releaseBassBoost() {
+        bassBoost?.runCatching {
+            enabled = false
+            release()
+        }
+        bassBoost = null
+        bassBoostSessionId = null
     }
 
     private fun enqueueApkDownload(url: String, fileName: String) {
@@ -150,6 +306,8 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun onDestroy() {
+        releaseEqualizer()
+        releaseBassBoost()
         if (downloadReceiverRegistered) {
             unregisterReceiver(downloadReceiver)
             downloadReceiverRegistered = false

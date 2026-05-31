@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -6,16 +7,57 @@ import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/music_models.dart';
+import '../services/audio_effects_service.dart';
 import '../services/music_api.dart';
 import '../services/music_audio_handler.dart';
 
 enum PlaybackMode { playlistLoop, shuffle, singleLoop }
 
+class AudioEffectPreset {
+  const AudioEffectPreset({required this.name, required this.levels});
+
+  final String name;
+  final List<int> levels;
+}
+
 class PlayerController extends ChangeNotifier {
   static const _listenTimeSettingKey = 'settings.add_listening_time_enabled';
   static const _audioQualitySettingKey = 'settings.audio_quality';
+  static const _equalizerEnabledSettingKey = 'settings.equalizer_enabled';
+  static const _equalizerLevelsSettingKey = 'settings.equalizer_levels';
+  static const _equalizerPresetSettingKey = 'settings.equalizer_preset';
+  static const _bassBoostEnabledSettingKey = 'settings.bass_boost_enabled';
+  static const _bassBoostStrengthSettingKey = 'settings.bass_boost_strength';
   static const _listenTimeReportInterval = Duration(minutes: 30);
   static const _listenTimeCheckInterval = Duration(minutes: 1);
+  static const _defaultEqualizerLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  static const equalizerPresets = [
+    AudioEffectPreset(name: '平直', levels: _defaultEqualizerLevels),
+    AudioEffectPreset(
+      name: '流行',
+      levels: [0, 250, 450, 350, 100, -100, 50, 300, 450, 500],
+    ),
+    AudioEffectPreset(
+      name: '摇滚',
+      levels: [500, 350, 150, -100, -250, -150, 150, 350, 550, 650],
+    ),
+    AudioEffectPreset(
+      name: '人声',
+      levels: [-250, -150, 0, 250, 500, 550, 350, 100, -100, -200],
+    ),
+    AudioEffectPreset(
+      name: '低音',
+      levels: [750, 650, 500, 250, 0, -100, -150, -200, -250, -300],
+    ),
+    AudioEffectPreset(
+      name: '古典',
+      levels: [350, 250, 100, 0, 150, 250, 300, 350, 250, 100],
+    ),
+    AudioEffectPreset(
+      name: '电子',
+      levels: [650, 450, 120, -120, -180, 100, 350, 550, 650, 700],
+    ),
+  ];
 
   PlayerController(this._api, this._audioHandler) {
     unawaited(_restoreSettings());
@@ -49,10 +91,19 @@ class PlayerController extends ChangeNotifier {
         unawaited(_handleCompleted());
       }
     });
+    _androidAudioSessionSub = audioPlayer.androidAudioSessionIdStream.listen((
+      sessionId,
+    ) {
+      _androidAudioSessionId = sessionId;
+      unawaited(_refreshEqualizerConfig());
+      unawaited(_applyEqualizer());
+      unawaited(_applyBassBoost());
+    });
   }
 
   final MusicApi _api;
   final MusicAudioHandler _audioHandler;
+  final AudioEffectsService _audioEffects = AudioEffectsService();
 
   AudioPlayer get audioPlayer => _audioHandler.audioPlayer;
 
@@ -62,6 +113,7 @@ class PlayerController extends ChangeNotifier {
   late final StreamSubscription<Duration?> _durationSub;
   late final StreamSubscription<PlayerState> _stateSub;
   late final StreamSubscription<ProcessingState> _processingStateSub;
+  late final StreamSubscription<int?> _androidAudioSessionSub;
   final Stopwatch _positionClock = Stopwatch();
   final _random = math.Random();
   Timer? _completionFallbackTimer;
@@ -86,9 +138,32 @@ class PlayerController extends ChangeNotifier {
   bool isPreparing = false;
   bool addListeningTimeEnabled = true;
   AudioQuality audioQuality = AudioQuality.standard;
+  bool equalizerEnabled = false;
+  List<int> equalizerLevels = List<int>.of(_defaultEqualizerLevels);
+  String equalizerPresetName = '平直';
+  EqualizerConfig equalizerConfig = EqualizerConfig.fallback(
+    _defaultEqualizerLevels,
+  );
+  bool bassBoostEnabled = false;
+  double bassBoostStrength = 0.45;
   String? errorMessage;
   int seekRevision = 0;
+  int? _androidAudioSessionId;
   bool get isScrubbing => _isScrubbing;
+  bool get isAudioEffectsSupported => _audioEffects.isAudioEffectsSupported;
+  bool get isBassBoostSupported => _audioEffects.isBassBoostSupported;
+  String get audioEffectsLabel {
+    if (!isAudioEffectsSupported) {
+      return '当前平台暂不支持';
+    }
+    if (equalizerEnabled) {
+      return '均衡器：$equalizerPresetName';
+    }
+    if (bassBoostEnabled) {
+      return 'Bass ${(bassBoostStrength * 100).round()}%';
+    }
+    return '关闭';
+  }
 
   Duration get smoothPosition {
     if (_isScrubbing) {
@@ -218,6 +293,92 @@ class PlayerController extends ChangeNotifier {
     if (reloadCurrent && currentSong != null && !sameQuality) {
       await _reloadCurrentSongForQuality();
     }
+  }
+
+  Future<void> setBassBoostEnabled(bool enabled) async {
+    if (bassBoostEnabled == enabled) {
+      return;
+    }
+    bassBoostEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_bassBoostEnabledSettingKey, enabled);
+    await _applyBassBoost();
+    notifyListeners();
+  }
+
+  Future<void> setBassBoostStrength(
+    double strength, {
+    bool persist = true,
+  }) async {
+    final nextStrength = strength.clamp(0.0, 1.0);
+    if ((bassBoostStrength - nextStrength).abs() < 0.001) {
+      return;
+    }
+    bassBoostStrength = nextStrength;
+    if (bassBoostEnabled) {
+      unawaited(_applyBassBoost());
+    }
+    notifyListeners();
+
+    if (persist) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_bassBoostStrengthSettingKey, nextStrength);
+    }
+  }
+
+  Future<void> setEqualizerEnabled(bool enabled) async {
+    if (equalizerEnabled == enabled) {
+      return;
+    }
+    equalizerEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_equalizerEnabledSettingKey, enabled);
+    await _applyEqualizer();
+    notifyListeners();
+  }
+
+  Future<void> setEqualizerBandLevel(
+    int index,
+    int levelMillibels, {
+    bool persist = true,
+  }) async {
+    if (index < 0 || index >= equalizerLevels.length) {
+      return;
+    }
+    final clamped = levelMillibels.clamp(
+      equalizerConfig.minMillibels,
+      equalizerConfig.maxMillibels,
+    );
+    if (equalizerLevels[index] == clamped) {
+      return;
+    }
+    equalizerLevels = List<int>.of(equalizerLevels)..[index] = clamped;
+    equalizerPresetName = '自定义';
+    if (equalizerEnabled) {
+      unawaited(_applyEqualizer());
+    }
+    notifyListeners();
+
+    if (persist) {
+      await _persistEqualizer();
+    }
+  }
+
+  Future<void> applyEqualizerPreset(AudioEffectPreset preset) async {
+    equalizerPresetName = preset.name;
+    equalizerLevels = _levelsForBandCount(
+      preset.levels,
+      equalizerLevels.length,
+    );
+    await _persistEqualizer();
+    if (equalizerEnabled) {
+      await _applyEqualizer();
+    }
+    notifyListeners();
+  }
+
+  Future<void> resetEqualizer() async {
+    await applyEqualizerPreset(equalizerPresets.first);
   }
 
   Future<void> loadLyrics(Song song) async {
@@ -382,8 +543,99 @@ class PlayerController extends ChangeNotifier {
     audioQuality = AudioQuality.fromApiValue(
       prefs.getString(_audioQualitySettingKey),
     );
+    equalizerEnabled =
+        prefs.getBool(_equalizerEnabledSettingKey) ?? equalizerEnabled;
+    equalizerPresetName =
+        prefs.getString(_equalizerPresetSettingKey) ?? equalizerPresetName;
+    equalizerLevels = _restoreEqualizerLevels(
+      prefs.getString(_equalizerLevelsSettingKey),
+    );
+    equalizerConfig = EqualizerConfig.fallback(equalizerLevels);
+    bassBoostEnabled =
+        prefs.getBool(_bassBoostEnabledSettingKey) ?? bassBoostEnabled;
+    bassBoostStrength =
+        prefs.getDouble(_bassBoostStrengthSettingKey) ?? bassBoostStrength;
     _syncListeningTimeTracker();
+    unawaited(_refreshEqualizerConfig());
+    unawaited(_applyEqualizer());
+    unawaited(_applyBassBoost());
     notifyListeners();
+  }
+
+  List<int> _restoreEqualizerLevels(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return List<int>.of(_defaultEqualizerLevels);
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final levels = decoded
+            .whereType<num>()
+            .map((value) => value.round())
+            .toList();
+        if (levels.isNotEmpty) {
+          return _levelsForBandCount(levels, _defaultEqualizerLevels.length);
+        }
+      }
+    } catch (_) {}
+    return List<int>.of(_defaultEqualizerLevels);
+  }
+
+  Future<void> _persistEqualizer() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_equalizerEnabledSettingKey, equalizerEnabled);
+    await prefs.setString(_equalizerPresetSettingKey, equalizerPresetName);
+    await prefs.setString(
+      _equalizerLevelsSettingKey,
+      jsonEncode(equalizerLevels),
+    );
+  }
+
+  Future<void> _refreshEqualizerConfig() async {
+    if (!isAudioEffectsSupported) {
+      return;
+    }
+    final config = await _audioEffects.equalizerConfig(
+      audioSessionId:
+          _androidAudioSessionId ?? audioPlayer.androidAudioSessionId,
+    );
+    if (config == null || config.bands.isEmpty) {
+      return;
+    }
+    equalizerConfig = config;
+    if (equalizerLevels.length != config.bands.length) {
+      equalizerLevels = _levelsForBandCount(
+        equalizerLevels,
+        config.bands.length,
+      );
+      unawaited(_persistEqualizer());
+    }
+    notifyListeners();
+  }
+
+  Future<void> _applyEqualizer() async {
+    if (!isAudioEffectsSupported) {
+      return;
+    }
+    await _audioEffects.configureEqualizer(
+      audioSessionId:
+          _androidAudioSessionId ?? audioPlayer.androidAudioSessionId,
+      enabled: equalizerEnabled,
+      levels: equalizerLevels,
+    );
+  }
+
+  Future<void> _applyBassBoost() async {
+    if (!isBassBoostSupported) {
+      return;
+    }
+
+    await _audioEffects.configureBassBoost(
+      audioSessionId:
+          _androidAudioSessionId ?? audioPlayer.androidAudioSessionId,
+      enabled: bassBoostEnabled,
+      strength: bassBoostStrength,
+    );
   }
 
   void _syncListeningTimeTracker() {
@@ -486,7 +738,24 @@ class PlayerController extends ChangeNotifier {
     _durationSub.cancel();
     _stateSub.cancel();
     _processingStateSub.cancel();
+    _androidAudioSessionSub.cancel();
     _completionFallbackTimer?.cancel();
+    unawaited(
+      _audioEffects.configureEqualizer(
+        audioSessionId:
+            _androidAudioSessionId ?? audioPlayer.androidAudioSessionId,
+        enabled: false,
+        levels: equalizerLevels,
+      ),
+    );
+    unawaited(
+      _audioEffects.configureBassBoost(
+        audioSessionId:
+            _androidAudioSessionId ?? audioPlayer.androidAudioSessionId,
+        enabled: false,
+        strength: bassBoostStrength,
+      ),
+    );
     _audioHandler.detachTransportControls();
     unawaited(_audioHandler.close());
     super.dispose();
@@ -510,5 +779,23 @@ class PlayerController extends ChangeNotifier {
       return duration;
     }
     return value;
+  }
+
+  List<int> _levelsForBandCount(List<int> source, int count) {
+    if (count <= 0) {
+      return const [];
+    }
+    if (source.length == count) {
+      return List<int>.of(source);
+    }
+    if (source.length == 1) {
+      return List<int>.filled(count, source.first);
+    }
+
+    return [
+      for (var index = 0; index < count; index++)
+        source[((index / math.max(1, count - 1)) * (source.length - 1))
+            .round()],
+    ];
   }
 }

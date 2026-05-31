@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../services/app_update_service.dart';
 import '../../services/music_api.dart';
+import '../widgets/audio_effects_sheet.dart';
 import '../widgets/audio_quality_sheet.dart';
 import '../widgets/app_update_widgets.dart';
 import 'about_page.dart';
@@ -24,136 +26,171 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 32),
-        children: [
-          _SettingsGroup(
-            title: '账号',
-            children: [
-              AnimatedBuilder(
-                animation: auth,
-                builder: (context, _) {
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                    leading: Icon(
-                      Icons.sync_rounded,
-                      color: colorScheme.primary,
-                    ),
-                    title: const Text('同步个人信息'),
-                    subtitle: const Text('刷新头像、昵称和歌单数据'),
-                    enabled: !auth.isLoading,
-                    trailing: auth.isLoading
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          )
-                        : Icon(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: colorScheme.brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        statusBarBrightness: colorScheme.brightness == Brightness.dark
+            ? Brightness.dark
+            : Brightness.light,
+      ),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('设置')),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 32),
+          children: [
+            _SettingsGroup(
+              title: '账号',
+              children: [
+                AnimatedBuilder(
+                  animation: auth,
+                  builder: (context, _) {
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                      ),
+                      leading: Icon(
+                        Icons.sync_rounded,
+                        color: colorScheme.primary,
+                      ),
+                      title: const Text('同步个人信息'),
+                      subtitle: const Text('刷新头像、昵称和歌单数据'),
+                      enabled: !auth.isLoading,
+                      trailing: auth.isLoading
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                              ),
+                            )
+                          : Icon(
+                              Icons.chevron_right_rounded,
+                              color: colorScheme.outline,
+                            ),
+                      onTap: auth.isLoading ? null : auth.refreshProfile,
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 54),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  leading: const Icon(Icons.logout_rounded),
+                  title: const Text('退出登录'),
+                  textColor: colorScheme.error,
+                  iconColor: colorScheme.error,
+                  onTap: auth.isLoading ? null : () => _confirmLogout(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _SettingsGroup(
+              title: '播放',
+              children: [
+                AnimatedBuilder(
+                  animation: player,
+                  builder: (context, _) {
+                    return Column(
+                      children: [
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                          ),
+                          leading: Icon(
+                            Icons.high_quality_rounded,
+                            color: colorScheme.primary,
+                          ),
+                          title: const Text('默认音质'),
+                          subtitle: Text(player.audioQuality.label),
+                          trailing: Icon(
                             Icons.chevron_right_rounded,
                             color: colorScheme.outline,
                           ),
-                    onTap: auth.isLoading ? null : auth.refreshProfile,
-                  );
-                },
-              ),
-              const Divider(height: 1, indent: 54),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                leading: const Icon(Icons.logout_rounded),
-                title: const Text('退出登录'),
-                textColor: colorScheme.error,
-                iconColor: colorScheme.error,
-                onTap: auth.isLoading ? null : () => _confirmLogout(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SettingsGroup(
-            title: '播放',
-            children: [
-              AnimatedBuilder(
-                animation: player,
-                builder: (context, _) {
-                  return Column(
-                    children: [
-                      ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
+                          onTap: () => _selectDefaultAudioQuality(context),
                         ),
-                        leading: Icon(
-                          Icons.high_quality_rounded,
-                          color: colorScheme.primary,
+                        const Divider(height: 1, indent: 54),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                          ),
+                          leading: Icon(
+                            Icons.graphic_eq_rounded,
+                            color: colorScheme.primary,
+                          ),
+                          title: const Text('音效'),
+                          subtitle: Text(player.audioEffectsLabel),
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: colorScheme.outline,
+                          ),
+                          onTap: () => showAudioEffectsSheet(
+                            context: context,
+                            player: player,
+                          ),
                         ),
-                        title: const Text('默认音质'),
-                        subtitle: Text(player.audioQuality.label),
-                        trailing: Icon(
-                          Icons.chevron_right_rounded,
-                          color: colorScheme.outline,
+                        const Divider(height: 1, indent: 54),
+                        SwitchListTile(
+                          value: player.addListeningTimeEnabled,
+                          onChanged: player.setAddListeningTimeEnabled,
+                          secondary: Icon(
+                            Icons.bar_chart_rounded,
+                            color: colorScheme.primary,
+                          ),
+                          title: const Text('增加听歌时长'),
+                          subtitle: const Text('每播放 30 分钟自动同步一次'),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                          ),
                         ),
-                        onTap: () => _selectDefaultAudioQuality(context),
-                      ),
-                      const Divider(height: 1, indent: 54),
-                      SwitchListTile(
-                        value: player.addListeningTimeEnabled,
-                        onChanged: player.setAddListeningTimeEnabled,
-                        secondary: Icon(
-                          Icons.bar_chart_rounded,
-                          color: colorScheme.primary,
-                        ),
-                        title: const Text('增加听歌时长'),
-                        subtitle: const Text('每播放 30 分钟自动同步一次'),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SettingsGroup(
-            title: '应用',
-            children: [
-              if (AppUpdateService.isSupportedPlatform) ...[
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _SettingsGroup(
+              title: '应用',
+              children: [
+                if (AppUpdateService.isSupportedPlatform) ...[
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                    leading: Icon(
+                      Icons.system_update_alt_rounded,
+                      color: colorScheme.primary,
+                    ),
+                    title: const Text('检查更新'),
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      color: colorScheme.outline,
+                    ),
+                    onTap: () =>
+                        checkAppUpdateManually(context: context, api: api),
+                  ),
+                  const Divider(height: 1, indent: 54),
+                ],
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14),
                   leading: Icon(
-                    Icons.system_update_alt_rounded,
+                    Icons.info_outline_rounded,
                     color: colorScheme.primary,
                   ),
-                  title: const Text('检查更新'),
+                  title: const Text('关于'),
                   trailing: Icon(
                     Icons.chevron_right_rounded,
                     color: colorScheme.outline,
                   ),
-                  onTap: () =>
-                      checkAppUpdateManually(context: context, api: api),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => AboutPage(api: api)),
+                    );
+                  },
                 ),
-                const Divider(height: 1, indent: 54),
               ],
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                leading: Icon(
-                  Icons.info_outline_rounded,
-                  color: colorScheme.primary,
-                ),
-                title: const Text('关于'),
-                trailing: Icon(
-                  Icons.chevron_right_rounded,
-                  color: colorScheme.outline,
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => AboutPage(api: api)),
-                  );
-                },
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -227,12 +264,17 @@ class _SettingsGroup extends StatelessWidget {
             ),
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(14),
+        Material(
+          color: colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(children: children),
           ),
-          child: Column(children: children),
         ),
       ],
     );
