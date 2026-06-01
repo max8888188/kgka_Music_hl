@@ -783,6 +783,15 @@ class _SongRow extends StatelessWidget {
                       song: song,
                       actions: [
                         SongSheetAction(
+                          icon: Icons.queue_music_rounded,
+                          title: '下一首播放',
+                          onTap: () => addSongToQueueWithFeedback(
+                            context: context,
+                            player: player,
+                            song: song,
+                          ),
+                        ),
+                        SongSheetAction(
                           icon: Icons.playlist_add_rounded,
                           title: '添加到歌单',
                           onTap: onAddToPlaylist,

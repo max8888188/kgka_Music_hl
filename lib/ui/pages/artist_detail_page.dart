@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../controllers/auth_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../models/music_models.dart';
 import '../../services/music_api.dart';
 import '../widgets/artwork.dart';
 import '../widgets/now_playing_badge.dart';
+import '../widgets/song_action_sheets.dart';
 
 class ArtistDetailPage extends StatefulWidget {
   const ArtistDetailPage({
     super.key,
     required this.api,
+    required this.auth,
     required this.artist,
     required this.player,
   });
 
   final MusicApi api;
+  final AuthController auth;
   final ArtistRef artist;
   final PlayerController player;
 
@@ -190,6 +194,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                     final song = _songs[index];
                     return _ArtistSongRow(
                       song: song,
+                      auth: widget.auth,
                       player: widget.player,
                       onTap: () => widget.player.playSong(
                         song,
@@ -377,11 +382,13 @@ class _SongSectionHeader extends StatelessWidget {
 class _ArtistSongRow extends StatelessWidget {
   const _ArtistSongRow({
     required this.song,
+    required this.auth,
     required this.player,
     required this.onTap,
   });
 
   final Song song;
+  final AuthController auth;
   final PlayerController player;
   final VoidCallback onTap;
 
@@ -475,6 +482,36 @@ class _ArtistSongRow extends StatelessWidget {
                         : colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
+                ),
+                IconButton(
+                  tooltip: '更多',
+                  onPressed: () {
+                    showSongActionSheet(
+                      context: context,
+                      song: song,
+                      actions: [
+                        SongSheetAction(
+                          icon: Icons.queue_music_rounded,
+                          title: '下一首播放',
+                          onTap: () => addSongToQueueWithFeedback(
+                            context: context,
+                            player: player,
+                            song: song,
+                          ),
+                        ),
+                        SongSheetAction(
+                          icon: Icons.playlist_add_rounded,
+                          title: '添加到歌单',
+                          onTap: () => showAddToPlaylistSheet(
+                            context: context,
+                            auth: auth,
+                            song: song,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  icon: const Icon(Icons.more_horiz_rounded),
                 ),
               ],
             ),
