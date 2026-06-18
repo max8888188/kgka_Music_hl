@@ -192,7 +192,7 @@ class _ActiveTimerDisplay extends StatelessWidget {
             style: TextStyle(
               color: colorScheme.onPrimaryContainer,
               fontWeight: FontWeight.w700,
-              fontSize: 15,
+              fontSize: 14,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),

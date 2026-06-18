@@ -231,6 +231,7 @@ class MainActivity : AudioServiceActivity() {
                         val locked = call.argument<Boolean>("locked") ?: false
                         val passthrough = call.argument<Boolean>("passthrough") ?: false
                         val textColorLong = call.argument<Long>("textColor") ?: 0xFFFFFFFF
+                        val backgroundColorLong = call.argument<Long>("backgroundColor") ?: 0xFF1A1A2E
                         val fontSize = call.argument<Double>("fontSize")?.toFloat() ?: 16f
                         val intent = Intent(this, LyricsOverlayService::class.java).apply {
                             action = LyricsOverlayService.ACTION_UPDATE_SETTINGS
@@ -238,6 +239,7 @@ class MainActivity : AudioServiceActivity() {
                             putExtra(LyricsOverlayService.EXTRA_LOCKED, locked)
                             putExtra(LyricsOverlayService.EXTRA_PASSTHROUGH, passthrough)
                             putExtra(LyricsOverlayService.EXTRA_TEXT_COLOR, textColorLong.toInt())
+                            putExtra(LyricsOverlayService.EXTRA_BACKGROUND_COLOR, backgroundColorLong.toInt())
                             putExtra(LyricsOverlayService.EXTRA_FONT_SIZE, fontSize)
                         }
                         startService(intent)

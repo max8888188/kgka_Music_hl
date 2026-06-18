@@ -598,7 +598,7 @@ class _LandscapeHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: Colors.white.withValues(alpha: .92),
-                        fontSize: compact ? 15 : 17,
+                        fontSize: compact ? 14 : 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1454,7 +1454,7 @@ class _PosterLyricPreviewState extends State<_PosterLyricPreview> {
     final next = index + 1 < lyrics.length ? lyrics[index + 1] : null;
     final currentStyle = Theme.of(context).textTheme.titleLarge!.copyWith(
       color: Colors.white,
-      fontSize: 23,
+      fontSize: 22,
       height: 1.22,
       fontWeight: FontWeight.w900,
     );

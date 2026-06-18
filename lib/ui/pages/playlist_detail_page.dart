@@ -393,7 +393,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 17,
+                          fontSize: 18,
                           fontWeight: FontWeight.w800,
                         ),
                       ),

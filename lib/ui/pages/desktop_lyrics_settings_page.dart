@@ -76,8 +76,33 @@ class _DesktopLyricsSettingsPageState
               ),
               _SettingsDivider(),
               _ColorPickerTile(
+                title: '歌词颜色',
                 currentColor: Color(_settings.textColor),
+                presets: const [
+                  Colors.white,
+                  Color(0xFFFFD700), // Gold
+                  Color(0xFFFF69B4), // Pink
+                  Color(0xFF00BFFF), // Sky blue
+                  Color(0xFF00FF7F), // Spring green
+                  Color(0xFFFF6347), // Tomato
+                  Color(0xFF000000), // Black
+                ],
                 onChanged: (c) => _update((s) => s.copyWith(textColor: c.toARGB32())),
+              ),
+              _SettingsDivider(),
+              _ColorPickerTile(
+                title: '背景颜色',
+                currentColor: Color(_settings.backgroundColor),
+                presets: const [
+                  Color(0xFF1A1A2E), // Default Dark Blue
+                  Color(0xFF000000), // Black
+                  Color(0xFF222222), // Dark Grey
+                  Color(0xFF3B1E1E), // Dark Red/Brown
+                  Color(0xFF1B3B1E), // Dark Green
+                  Color(0xFF2A1E3B), // Dark Purple
+                  Color(0xFF1E353B), // Dark Teal
+                ],
+                onChanged: (c) => _update((s) => s.copyWith(backgroundColor: c.toARGB32())),
               ),
             ],
           ),
@@ -294,20 +319,17 @@ class _SwitchTile extends StatelessWidget {
 }
 
 class _ColorPickerTile extends StatelessWidget {
-  const _ColorPickerTile({required this.currentColor, required this.onChanged});
+  const _ColorPickerTile({
+    required this.title,
+    required this.currentColor,
+    required this.presets,
+    required this.onChanged,
+  });
 
+  final String title;
   final Color currentColor;
+  final List<Color> presets;
   final ValueChanged<Color> onChanged;
-
-  static const _presetColors = [
-    Colors.white,
-    Color(0xFFFFD700), // Gold
-    Color(0xFFFF69B4), // Pink
-    Color(0xFF00BFFF), // Sky blue
-    Color(0xFF00FF7F), // Spring green
-    Color(0xFFFF6347), // Tomato
-    Color(0xFF000000), // Black
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +343,7 @@ class _ColorPickerTile extends StatelessWidget {
               const Icon(Icons.palette_rounded, size: 22),
               const SizedBox(width: 14),
               Text(
-                '歌词颜色',
+                title,
                 style: Theme.of(context)
                     .textTheme
                     .bodyLarge
@@ -333,7 +355,7 @@ class _ColorPickerTile extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              for (final color in _presetColors)
+              for (final color in presets)
                 GestureDetector(
                   onTap: () => onChanged(color),
                   child: Container(

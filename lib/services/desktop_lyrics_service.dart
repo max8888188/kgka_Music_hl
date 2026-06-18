@@ -10,6 +10,7 @@ class DesktopLyricsSettings {
     this.locked = false,
     this.passthrough = false,
     this.textColor = 0xFFFFFFFF,
+    this.backgroundColor = 0xFF1A1A2E,
     this.fontSize = 16.0,
   });
 
@@ -17,6 +18,7 @@ class DesktopLyricsSettings {
   final bool locked;
   final bool passthrough;
   final int textColor;
+  final int backgroundColor;
   final double fontSize;
 
   DesktopLyricsSettings copyWith({
@@ -24,6 +26,7 @@ class DesktopLyricsSettings {
     bool? locked,
     bool? passthrough,
     int? textColor,
+    int? backgroundColor,
     double? fontSize,
   }) {
     return DesktopLyricsSettings(
@@ -31,6 +34,7 @@ class DesktopLyricsSettings {
       locked: locked ?? this.locked,
       passthrough: passthrough ?? this.passthrough,
       textColor: textColor ?? this.textColor,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
       fontSize: fontSize ?? this.fontSize,
     );
   }
@@ -40,6 +44,7 @@ class DesktopLyricsSettings {
     'locked': locked,
     'passthrough': passthrough,
     'textColor': textColor,
+    'backgroundColor': backgroundColor,
     'fontSize': fontSize,
   };
 
@@ -49,6 +54,7 @@ class DesktopLyricsSettings {
       locked: map['locked'] as bool? ?? false,
       passthrough: map['passthrough'] as bool? ?? false,
       textColor: (map['textColor'] as num?)?.toInt() ?? 0xFFFFFFFF,
+      backgroundColor: (map['backgroundColor'] as num?)?.toInt() ?? 0xFF1A1A2E,
       fontSize: (map['fontSize'] as num?)?.toDouble() ?? 16.0,
     );
   }

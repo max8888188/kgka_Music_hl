@@ -46,6 +46,7 @@ class LyricsOverlayService : Service() {
         const val EXTRA_LOCKED = "locked"
         const val EXTRA_PASSTHROUGH = "passthrough"
         const val EXTRA_TEXT_COLOR = "text_color"
+        const val EXTRA_BACKGROUND_COLOR = "background_color"
         const val EXTRA_FONT_SIZE = "font_size"
         const val EXTRA_IS_FOREGROUND = "is_foreground"
         const val EXTRA_LINE_DURATION_MS = "line_duration_ms"
@@ -59,6 +60,7 @@ class LyricsOverlayService : Service() {
         private const val KEY_LOCKED = "locked"
         private const val KEY_PASSTHROUGH = "passthrough"
         private const val KEY_TEXT_COLOR = "text_color"
+        private const val KEY_BACKGROUND_COLOR = "background_color"
         private const val KEY_FONT_SIZE = "font_size"
 
         fun isRunning(context: Context): Boolean {
@@ -94,6 +96,7 @@ class LyricsOverlayService : Service() {
     private var isLocked: Boolean = false
     private var isPassthrough: Boolean = false
     private var textColor: Int = Color.WHITE
+    private var backgroundColor: Int = Color.parseColor("#1A1A2E")
     private var fontSizeSp: Float = 16f
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -137,8 +140,10 @@ class LyricsOverlayService : Service() {
                 // Lock auto-enables passthrough
                 isPassthrough = if (isLocked) true else intent.getBooleanExtra(EXTRA_PASSTHROUGH, isPassthrough)
                 val colorInt = intent.getIntExtra(EXTRA_TEXT_COLOR, textColor)
+                val bgColorInt = intent.getIntExtra(EXTRA_BACKGROUND_COLOR, backgroundColor)
                 val sizeSp = intent.getFloatExtra(EXTRA_FONT_SIZE, fontSizeSp)
                 textColor = colorInt
+                backgroundColor = bgColorInt
                 fontSizeSp = sizeSp
                 saveSettings()
                 applySettings()
@@ -343,8 +348,11 @@ class LyricsOverlayService : Service() {
 
     private fun applySettings() {
         overlayView?.post {
-            // Background opacity
+            // Background color & opacity
             overlayView?.background?.let { bg ->
+                if (bg is android.graphics.drawable.GradientDrawable) {
+                    bg.setColor(backgroundColor)
+                }
                 bg.alpha = (bgOpacity * 255).toInt().coerceIn(0, 255)
             }
 
@@ -408,6 +416,7 @@ class LyricsOverlayService : Service() {
         isLocked = prefs.getBoolean(KEY_LOCKED, false)
         isPassthrough = if (isLocked) true else prefs.getBoolean(KEY_PASSTHROUGH, false)
         textColor = prefs.getInt(KEY_TEXT_COLOR, Color.WHITE)
+        backgroundColor = prefs.getInt(KEY_BACKGROUND_COLOR, Color.parseColor("#1A1A2E"))
         fontSizeSp = prefs.getFloat(KEY_FONT_SIZE, 16f)
     }
 
@@ -418,6 +427,7 @@ class LyricsOverlayService : Service() {
             .putBoolean(KEY_LOCKED, isLocked)
             .putBoolean(KEY_PASSTHROUGH, isPassthrough)
             .putInt(KEY_TEXT_COLOR, textColor)
+            .putInt(KEY_BACKGROUND_COLOR, backgroundColor)
             .putFloat(KEY_FONT_SIZE, fontSizeSp)
             .apply()
     }

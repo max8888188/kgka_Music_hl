@@ -175,7 +175,7 @@ class _GridItem extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: color,
               fontWeight: FontWeight.w600,
-                fontSize: 11,
+                fontSize: 12,
               ),
             ),
             if (action.subtitle != null)
@@ -186,7 +186,7 @@ class _GridItem extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
-                  fontSize: 9,
+                  fontSize: 10,
                 ),
               ),
           ],

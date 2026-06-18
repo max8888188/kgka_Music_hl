@@ -654,7 +654,7 @@ class _CodeButton extends StatelessWidget {
           style: TextStyle(
             color: enabled ? colorScheme.primary : colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w900,
-            fontSize: 13,
+            fontSize: 12,
           ),
         ),
       ),

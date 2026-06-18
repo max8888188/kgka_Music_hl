@@ -98,7 +98,7 @@ class MiniPlayer extends StatelessWidget {
                                                   .titleMedium
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w900,
-                                                    fontSize: 15,
+                                                    fontSize: 14,
                                                   ),
                                             ),
                                             Text(
@@ -171,7 +171,7 @@ class MiniPlayer extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: colorScheme.error,
-                                fontSize: 11,
+                                fontSize: 10,
                               ),
                             ),
                           ),

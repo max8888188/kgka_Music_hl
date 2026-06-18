@@ -688,7 +688,7 @@ class _SearchResults extends StatelessWidget {
                                     ?.copyWith(
                                       color: active ? activeColor : null,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 15,
+                                      fontSize: 16,
                                     ),
                               ),
                               const SizedBox(height: 4),

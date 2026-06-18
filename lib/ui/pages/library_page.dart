@@ -62,7 +62,7 @@ class LibraryPage extends StatelessWidget {
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(
                                 fontWeight: FontWeight.w900,
-                                fontSize: 24,
+                                fontSize: 22,
                               ),
                         ),
                       ),
