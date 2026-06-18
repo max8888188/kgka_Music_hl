@@ -13,6 +13,7 @@ import '../../models/music_models.dart';
 import '../widgets/audio_effects_sheet.dart';
 import '../widgets/audio_quality_sheet.dart';
 import '../widgets/artwork.dart';
+import '../widgets/playback_speed_sheet.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import '../widgets/song_action_sheets.dart';
 import 'artist_detail_page.dart';
@@ -644,6 +645,12 @@ class _LandscapeHeader extends StatelessWidget {
       song: song,
       actions: [
         SongSheetAction(
+          icon: Icons.speed_rounded,
+          title: '倍速播放',
+          subtitle: player.playbackSpeedLabel,
+          onTap: () => showPlaybackSpeedSheet(context: context, player: player),
+        ),
+        SongSheetAction(
           icon: Icons.high_quality_rounded,
           title: '音质：${player.audioQuality.label}',
           subtitle: '切换当前播放音质',
@@ -1162,6 +1169,12 @@ class _TopBar extends StatelessWidget {
       context: context,
       song: song,
       actions: [
+        SongSheetAction(
+          icon: Icons.speed_rounded,
+          title: '倍速播放',
+          subtitle: player.playbackSpeedLabel,
+          onTap: () => showPlaybackSpeedSheet(context: context, player: player),
+        ),
         SongSheetAction(
           icon: Icons.high_quality_rounded,
           title: '音质：${player.audioQuality.label}',

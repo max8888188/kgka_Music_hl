@@ -33,6 +33,7 @@ class PlayerController extends ChangeNotifier {
       'settings.audio_interruption_enabled';
   static const _autoResumeAfterInterruptionSettingKey =
       'settings.auto_resume_after_interruption';
+  static const _playbackSpeedSettingKey = 'settings.playback_speed';
   static const _listenTimeReportInterval = Duration(minutes: 30);
   static const _listenTimeCheckInterval = Duration(minutes: 1);
   static const _defaultEqualizerLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -146,6 +147,7 @@ class PlayerController extends ChangeNotifier {
   bool isPreparing = false;
   bool addListeningTimeEnabled = true;
   AudioQuality audioQuality = AudioQuality.standard;
+  double playbackSpeed = 1.0;
   bool equalizerEnabled = false;
   List<int> equalizerLevels = List<int>.of(_defaultEqualizerLevels);
   String equalizerPresetName = '平直';
@@ -178,6 +180,13 @@ class PlayerController extends ChangeNotifier {
       return 'Bass ${(bassBoostStrength * 100).round()}%';
     }
     return '关闭';
+  }
+
+  String get playbackSpeedLabel {
+    if (playbackSpeed == playbackSpeed.roundToDouble()) {
+      return '${playbackSpeed.round()}x';
+    }
+    return '${playbackSpeed}x';
   }
 
   Duration get smoothPosition {
@@ -346,6 +355,18 @@ class PlayerController extends ChangeNotifier {
     if (reloadCurrent && currentSong != null && !sameQuality) {
       await _reloadCurrentSongForQuality();
     }
+  }
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    final clamped = speed.clamp(0.5, 3.0);
+    if ((playbackSpeed - clamped).abs() < 0.001) {
+      return;
+    }
+    playbackSpeed = clamped;
+    await audioPlayer.setSpeed(clamped);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_playbackSpeedSettingKey, clamped);
+    notifyListeners();
   }
 
   Future<void> setBassBoostEnabled(bool enabled) async {
@@ -757,6 +778,9 @@ class PlayerController extends ChangeNotifier {
     autoResumeAfterInterruption =
         prefs.getBool(_autoResumeAfterInterruptionSettingKey) ??
             autoResumeAfterInterruption;
+    playbackSpeed =
+        prefs.getDouble(_playbackSpeedSettingKey) ?? playbackSpeed;
+    unawaited(audioPlayer.setSpeed(playbackSpeed));
     _syncListeningTimeTracker();
     unawaited(_refreshEqualizerConfig());
     unawaited(_applyEqualizer());
