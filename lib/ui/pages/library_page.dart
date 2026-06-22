@@ -12,7 +12,7 @@ import 'downloaded_songs_page.dart';
 import 'playlist_detail_page.dart';
 import 'settings_page.dart';
 
-class LibraryPage extends StatelessWidget {
+class LibraryPage extends StatefulWidget {
   const LibraryPage({
     super.key,
     required this.api,
@@ -29,33 +29,53 @@ class LibraryPage extends StatelessWidget {
   final ThemeController theme;
 
   @override
+  State<LibraryPage> createState() => _LibraryPageState();
+}
+
+class _LibraryPageState extends State<LibraryPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _openPlaylist(PlaylistSummary playlist) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistDetailPage(
+          api: widget.api,
+          auth: widget.auth,
+          player: widget.player,
+          playlist: playlist,
+        ),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          api: widget.api,
+          auth: widget.auth,
+          player: widget.player,
+          theme: widget.theme,
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    void openPlaylist(PlaylistSummary playlist) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PlaylistDetailPage(
-            api: api,
-            auth: auth,
-            player: player,
-            playlist: playlist,
-          ),
-        ),
-      );
-    }
-
-    void openSettings() {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SettingsPage(
-            api: api,
-            auth: auth,
-            player: player,
-            theme: theme,
-          ),
-        ),
-      );
-    }
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Stack(
       children: [
@@ -90,8 +110,12 @@ class LibraryPage extends StatelessWidget {
         SafeArea(
           bottom: false,
           child: AnimatedBuilder(
-            animation: auth,
+            animation: widget.auth,
             builder: (context, _) {
+              final created = widget.auth.createdPlaylists;
+              final collected = widget.auth.collectedPlaylists;
+              final albums = widget.auth.collectedAlbums;
+
               return CustomScrollView(
                 slivers: [
                   // Header
@@ -108,105 +132,79 @@ class LibraryPage extends StatelessWidget {
                                 fontWeight: FontWeight.w900,
                                 fontSize: 22,
                               ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '设置',
+                            onPressed: _openSettings,
+                            icon: const Icon(Icons.settings_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Account info
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                      child: _AccountRow(auth: widget.auth),
+                    ),
+                  ),
+                  // Quick action cards (horizontal scrollable)
+                  SliverToBoxAdapter(
+                    child: _QuickActionRow(
+                      auth: widget.auth,
+                      downloads: widget.downloads,
+                      player: widget.player,
+                      api: widget.api,
+                      onOpenLiked: widget.auth.likedPlaylist == null
+                          ? null
+                          : () => _openPlaylist(widget.auth.likedPlaylist!),
+                      onOpenDownloads: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => DownloadedSongsPage(
+                            api: widget.api,
+                            auth: widget.auth,
+                            player: widget.player,
+                            downloads: widget.downloads,
+                          ),
                         ),
                       ),
-                      IconButton(
-                        tooltip: '设置',
-                        onPressed: openSettings,
-                        icon: const Icon(Icons.settings_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Account info
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-                  child: _AccountRow(auth: auth),
-                ),
-              ),
-              // Quick action cards (horizontal scrollable)
-              SliverToBoxAdapter(
-                child: _QuickActionRow(
-                  auth: auth,
-                  downloads: downloads,
-                  player: player,
-                  api: api,
-                  onOpenLiked: auth.likedPlaylist == null
-                      ? null
-                      : () => openPlaylist(auth.likedPlaylist!),
-                  onOpenDownloads: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => DownloadedSongsPage(
-                        api: api,
-                        auth: auth,
-                        player: player,
-                        downloads: downloads,
+                      onOpenCloudDrive: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CloudDrivePage(
+                            api: widget.api,
+                            auth: widget.auth,
+                            player: widget.player,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  onOpenCloudDrive: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CloudDrivePage(
-                        api: api,
-                        auth: auth,
-                        player: player,
-                      ),
+                  // Tab 标签栏：创建 / 收藏 / 专辑
+                  SliverToBoxAdapter(
+                    child: _PlaylistTabBar(
+                      controller: _tabController,
+                      createdCount: created.length,
+                      collectedCount: collected.length,
+                      albumCount: albums.length,
                     ),
                   ),
-                ),
-              ),
-              // Created playlists
-              if (auth.createdPlaylists.isNotEmpty) ...[
-                SliverToBoxAdapter(
-                  child: _PlaylistSectionHeader(
-                    title: '创建的歌单',
-                    count: auth.createdPlaylists.length,
+                  // 当前 Tab 对应的歌单列表
+                  SliverToBoxAdapter(
+                    child: _PlaylistTabView(
+                      controller: _tabController,
+                      created: created,
+                      collected: collected,
+                      albums: albums,
+                      onOpen: _openPlaylist,
+                    ),
                   ),
-                ),
-                SliverToBoxAdapter(
-                  child: _PlaylistGroup(
-                    playlists: auth.createdPlaylists,
-                    onOpen: openPlaylist,
-                  ),
-                ),
-              ],
-              // Collected playlists
-              if (auth.collectedPlaylists.isNotEmpty) ...[
-                SliverToBoxAdapter(
-                  child: _PlaylistSectionHeader(
-                    title: '收藏的歌单',
-                    count: auth.collectedPlaylists.length,
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: _PlaylistGroup(
-                    playlists: auth.collectedPlaylists,
-                    onOpen: openPlaylist,
-                  ),
-                ),
-              ],
-              // Collected albums
-              if (auth.collectedAlbums.isNotEmpty) ...[
-                SliverToBoxAdapter(
-                  child: _PlaylistSectionHeader(
-                    title: '收藏的专辑',
-                    count: auth.collectedAlbums.length,
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: _PlaylistGroup(
-                    playlists: auth.collectedAlbums,
-                    onOpen: openPlaylist,
-                  ),
-                ),
-              ],
-              const SliverToBoxAdapter(child: SizedBox(height: 160)),
-            ],
-          );
-        },
-      ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 160)),
+                ],
+              );
+            },
+          ),
         ),
       ],
     );
@@ -401,34 +399,199 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-// --- Section header ---
+// --- Tab 标签栏 ---
 
-class _PlaylistSectionHeader extends StatelessWidget {
-  const _PlaylistSectionHeader({required this.title, required this.count});
+class _PlaylistTabBar extends StatelessWidget {
+  const _PlaylistTabBar({
+    required this.controller,
+    required this.createdCount,
+    required this.collectedCount,
+    required this.albumCount,
+  });
 
-  final String title;
+  final TabController controller;
+  final int createdCount;
+  final int collectedCount;
+  final int albumCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            return Row(
+              children: [
+                Expanded(
+                  child: _TabItem(
+                    label: '创建',
+                    count: createdCount,
+                    selected: controller.index == 0,
+                    onTap: () => controller.animateTo(0),
+                  ),
+                ),
+                Expanded(
+                  child: _TabItem(
+                    label: '收藏',
+                    count: collectedCount,
+                    selected: controller.index == 1,
+                    onTap: () => controller.animateTo(1),
+                  ),
+                ),
+                Expanded(
+                  child: _TabItem(
+                    label: '专辑',
+                    count: albumCount,
+                    selected: controller.index == 2,
+                    onTap: () => controller.animateTo(2),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatelessWidget {
+  const _TabItem({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
   final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? colorScheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: label),
+              if (count > 0) ...[
+                const TextSpan(text: ' '),
+                TextSpan(
+                  text: '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected
+                        ? colorScheme.onPrimary.withValues(alpha: .78)
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: selected ? colorScheme.onPrimary : colorScheme.onSurface,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Tab 内容视图 ---
+
+class _PlaylistTabView extends StatelessWidget {
+  const _PlaylistTabView({
+    required this.controller,
+    required this.created,
+    required this.collected,
+    required this.albums,
+    required this.onOpen,
+  });
+
+  final TabController controller;
+  final List<PlaylistSummary> created;
+  final List<PlaylistSummary> collected;
+  final List<PlaylistSummary> albums;
+  final void Function(PlaylistSummary) onOpen;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 24, 18, 8),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$count',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final lists = [created, collected, albums];
+          final current = lists[controller.index.clamp(0, 2)];
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: current.isEmpty
+                ? _EmptyGroup(key: ValueKey('empty_${controller.index}'))
+                : _PlaylistGroup(
+                    key: ValueKey('group_${controller.index}'),
+                    playlists: current,
+                    onOpen: onOpen,
+                  ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EmptyGroup extends StatelessWidget {
+  const _EmptyGroup({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.library_music_outlined,
+              size: 48,
+              color: colorScheme.outline,
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              '这里还没有内容',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -437,7 +600,7 @@ class _PlaylistSectionHeader extends StatelessWidget {
 // --- Playlist group with dividers (no card background) ---
 
 class _PlaylistGroup extends StatelessWidget {
-  const _PlaylistGroup({required this.playlists, required this.onOpen});
+  const _PlaylistGroup({super.key, required this.playlists, required this.onOpen});
 
   final List<PlaylistSummary> playlists;
   final void Function(PlaylistSummary) onOpen;
@@ -445,31 +608,28 @@ class _PlaylistGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            children: [
-              for (var i = 0; i < playlists.length; i++) ...[
-                _PlaylistRow(
-                  playlist: playlists[i],
-                  onTap: () => onOpen(playlists[i]),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          children: [
+            for (var i = 0; i < playlists.length; i++) ...[
+              _PlaylistRow(
+                playlist: playlists[i],
+                onTap: () => onOpen(playlists[i]),
+              ),
+              if (i < playlists.length - 1)
+                Divider(
+                  height: 1,
+                  indent: 62,
+                  color: colorScheme.outlineVariant.withValues(alpha: .3),
                 ),
-                if (i < playlists.length - 1)
-                  Divider(
-                    height: 1,
-                    indent: 62,
-                    color: colorScheme.outlineVariant.withValues(alpha: .3),
-                  ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
