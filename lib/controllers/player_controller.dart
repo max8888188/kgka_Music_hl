@@ -828,17 +828,27 @@ class PlayerController extends ChangeNotifier {
   Future<void> _setupAudioSessionListeners() async {
     try {
       final session = await AudioSession.instance;
-      await session.configure(const AudioSessionConfiguration.music());
+      await session.configure(_audioSessionConfiguration);
       _interruptionSub = session.interruptionEventStream.listen((event) {
         if (event.begin) {
-          if (isPlaying && !audioInterruptionEnabled) {
-            // Interruption started — we want to ignore it, but the system
-            // may have already paused the player. Mark that we should
-            // auto-resume once the interruption ends.
+          // 打断开始：系统可能已自动暂停播放器。
+          // 若开启了"阻止打断"，立即恢复播放以对抗暂停。
+          if (!audioInterruptionEnabled && isPlaying && currentSong != null) {
+            _autoResumeTimer?.cancel();
+            _autoResumeTimer = Timer(
+              const Duration(milliseconds: 300),
+              () {
+                if (!isPlaying && currentSong != null) {
+                  unawaited(_audioHandler.play());
+                }
+              },
+            );
           }
         } else {
-          // Interruption ended
-          if (autoResumeAfterInterruption && currentSong != null) {
+          // 打断结束：若开启了"自动恢复"或"阻止打断"，恢复播放。
+          if ((autoResumeAfterInterruption ||
+                  (!audioInterruptionEnabled)) &&
+              currentSong != null) {
             _autoResumeTimer?.cancel();
             _autoResumeTimer = Timer(
               const Duration(milliseconds: 500),
@@ -853,7 +863,7 @@ class PlayerController extends ChangeNotifier {
       });
       _becomingNoisySub = session.becomingNoisyEventStream.listen((_) {
         if (!audioInterruptionEnabled) {
-          // Ignore headphone disconnect
+          // 阻止打断模式下忽略耳机拔出
           return;
         }
         if (autoResumeAfterInterruption && currentSong != null) {
@@ -873,12 +883,45 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// 根据打断设置生成 AudioSessionConfiguration。
+  ///
+  /// 阻止打断时使用 [AndroidAudioFocusGainType.gain] 并禁用 androidWillPauseWhenDucked，
+  /// 向系统声明不希望被其他 App 打断。同时配合 interruptionEventStream 中的
+  /// 主动恢复播放作为双保险。
+  AudioSessionConfiguration get _audioSessionConfiguration {
+    if (audioInterruptionEnabled) {
+      return const AudioSessionConfiguration.music();
+    }
+    // 阻止打断模式：声明需要独占音频焦点，不因降音暂停
+    return const AudioSessionConfiguration(
+      androidAudioAttributes: AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.music,
+        usage: AndroidAudioUsage.media,
+      ),
+      androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+      // 不因其他 App 降音而暂停
+      androidWillPauseWhenDucked: false,
+    );
+  }
+
   Future<void> setAudioInterruptionEnabled(bool enabled) async {
     if (audioInterruptionEnabled == enabled) return;
     audioInterruptionEnabled = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_audioInterruptionEnabledSettingKey, enabled);
+    // 设置变更后立即重新配置 AudioSession，使新策略生效
+    unawaited(_reconfigureAudioSession());
     notifyListeners();
+  }
+
+  /// 重新配置 AudioSession 以应用最新的打断策略。
+  Future<void> _reconfigureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(_audioSessionConfiguration);
+    } catch (_) {
+      // AudioSession not available on this platform
+    }
   }
 
   Future<void> setAutoResumeAfterInterruption(bool enabled) async {
