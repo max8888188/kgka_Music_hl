@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="lib/assets/logo.jpg" alt="KA Music Logo" width="120" height="120" />
+  <img src="lib/assets/logo.png" alt="KA Music Logo" width="120" height="120" />
 </p>
 
 <h1 align="center">KA Music</h1>
