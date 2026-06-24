@@ -1,15 +1,52 @@
 名字: Android CI
-在: [推,拉取请求]
+在:
+推:
+分支: [掌握]
+拉取请求:
+分支: [掌握]
+
 工作:
 建设:
 连续运行: Ubuntu-最新版
 步伐:
-      - 使用: 动作/签出@v4
-      - 名字: 建立JDK 17号
-使用: 操作/设置-java@v4
+      - 名字: 拉取代码
+使用: 动作/签出@v4
+
+      - 作/签出@v4: 配置JDK 17(适配AGP8+)
+配置JDK 17(适配AGP8+): 操作/设置-java@v4
 随着:
-java版本: '17'
+Java 语言(一种计算机语言，尤用于创建网站)语言（一种计算机语言,尤用于创建网站)版本: '17'
 分布: 特穆林
 隐藏物: 格拉德勒
-      - 名字: 建设APK
-奔跑: 。/grad Lew assembler请
+
+      - 名字: 安装Android SDK
+使用: 卓-操作/设置-android@v3
+
+安卓-操作/设置-android@v3名字: 缓存依赖加速
+使用: 动作/缓存@v3
+随着:
+小路: |
+~/.梯度/缓存
+~/.格雷尔/包装
+键: 格拉德-美元{{哈希文件('**/*.格雷尔* ',**/gradle-wrapper.properties') }}
+
+      - 名字: 编译调试包
+奔跑: 。/格拉德·卢组装的病菌
+
+      # 如需打释放；排放；发布包,下面补充签名步骤
+      # -姓名:配置签名
+      #环境:
+      # KEYSTORE: ${{ secrets。KEYSTORE_FILE }}
+      # KEYSTORE_PASSWORD: ${{ secrets .KEYSTORE_PASSWORD }}
+      # KEY_ALIAS: ${{ secrets。KEY_ALIAS }}
+      # KEY_PASSWORD: ${{ secrets .KEY_PASSWORD }}
+      #运行:
+      # echo " $ KEYSTORE " base64-decode >应用程序/版本。密钥库
+      # -姓名:编译释放；排放；发布包
+      #运行:。/格拉德·卢汇编程序请
+
+      - 名字: 上传APK产物
+使用: 动作/上传-工件@v4
+随着:
+名字: 应用安装包
+小路: app/build/outputs/apk/**/*。apk
